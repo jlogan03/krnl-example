@@ -1,5 +1,5 @@
 use krnl::{
-    anyhow::{bail, Context, Result},
+    anyhow::{Context, Result, bail},
     buffer::{Buffer, Slice, SliceMut},
     device::Device,
     macros::module,
@@ -12,17 +12,19 @@ mod kernels {
     use krnl_core::macros::kernel;
 
     #[kernel]
-    pub fn affine(#[item] x: f64, a: f64, b: f64, #[item] y: &mut f64) {
+    pub fn affine(#[item] a: f64, #[item] b: f64, #[item] x: f64, #[item] y: &mut f64) {
         *y = a * x + b;
     }
 }
 
-fn affine(a: f64, b: f64, x: Slice<f64>, mut y: SliceMut<f64>) -> Result<()> {
-    if x.len() != y.len() {
-        bail!("x and y lengths must match");
+fn affine(a: Slice<f64>, b: Slice<f64>, x: Slice<f64>, y: SliceMut<f64>) -> Result<()> {
+    if a.len() != b.len() || a.len() != x.len() || a.len() != y.len() {
+        bail!("a, b, x, and y lengths must match");
     }
 
-    kernels::affine::builder()?.build(y.device())?.dispatch(x, a, b, y)
+    kernels::affine::builder()?
+        .build(y.device())?
+        .dispatch(a, b, x, y)
 }
 
 fn print_device_capabilities(device: &Device) {
@@ -44,8 +46,8 @@ fn print_device_capabilities(device: &Device) {
 }
 
 fn main() -> Result<()> {
-    let a = 2.0f64;
-    let b = 1.0f64;
+    let a = vec![2.0f64, 2.0, 2.0, 2.0];
+    let b = vec![1.0f64, 1.0, 1.0, 1.0];
     let x = vec![0.0f64, 1.0, 2.0, 3.5];
 
     let device = Device::builder()
@@ -56,10 +58,12 @@ fn main() -> Result<()> {
     }
     print_device_capabilities(&device);
 
+    let a = Buffer::from(a).into_device(device.clone())?;
+    let b = Buffer::from(b).into_device(device.clone())?;
     let x = Buffer::from(x).into_device(device.clone())?;
     let mut y = Buffer::<f64>::zeros(device.clone(), x.len())?;
 
-    affine(a, b, x.as_slice(), y.as_slice_mut())?;
+    affine(a.as_slice(), b.as_slice(), x.as_slice(), y.as_slice_mut())?;
     device.wait()?;
 
     let y = y.into_vec()?;
