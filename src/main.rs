@@ -12,30 +12,41 @@ mod kernels {
     use krnl_core::macros::kernel;
 
     #[kernel]
-    pub fn affine(#[item] x: f32, a: f32, b: f32, #[item] y: &mut f32) {
+    pub fn affine(#[item] x: f64, a: f64, b: f64, #[item] y: &mut f64) {
         *y = a * x + b;
     }
 }
 
-fn affine(a: f32, b: f32, x: Slice<f32>, mut y: SliceMut<f32>) -> Result<()> {
+fn affine(a: f64, b: f64, x: Slice<f64>, mut y: SliceMut<f64>) -> Result<()> {
     if x.len() != y.len() {
         bail!("x and y lengths must match");
-    }
-
-    if let Some((x, y)) = x.as_host_slice().zip(y.as_host_slice_mut()) {
-        for (x, y) in x.iter().copied().zip(y.iter_mut()) {
-            *y = a * x + b;
-        }
-        return Ok(());
     }
 
     kernels::affine::builder()?.build(y.device())?.dispatch(x, a, b, y)
 }
 
+fn print_device_capabilities(device: &Device) {
+    if let Some(info) = device.info() {
+        println!("device info:");
+        println!("  is_device: {}", device.is_device());
+        println!("  is_host: {}", device.is_host());
+        println!("  max_groups: {}", info.max_groups());
+        println!("  max_threads_per_group: {}", info.max_threads());
+        println!(
+            "  subgroup_threads: {}..={}",
+            info.min_subgroup_threads(),
+            info.max_subgroup_threads()
+        );
+        println!("  features: {:#?}", info.features());
+    } else {
+        println!("device capabilities: host backend");
+    }
+}
+
 fn main() -> Result<()> {
-    let a = 2.0f32;
-    let b = 1.0f32;
-    let x = vec![0.0f32, 1.0, 2.0, 3.5];
+    let a = 2.0f64;
+    let b = 1.0f64;
+    let x = vec![0.0f64, 1.0, 2.0, 3.5];
 
     let device = Device::builder()
         .build()
@@ -43,9 +54,10 @@ fn main() -> Result<()> {
     if !device.is_device() {
         bail!("Expected a device-backed runtime, got host");
     }
+    print_device_capabilities(&device);
 
     let x = Buffer::from(x).into_device(device.clone())?;
-    let mut y = Buffer::<f32>::zeros(device.clone(), x.len())?;
+    let mut y = Buffer::<f64>::zeros(device.clone(), x.len())?;
 
     affine(a, b, x.as_slice(), y.as_slice_mut())?;
     device.wait()?;
