@@ -3,6 +3,9 @@ use krnl::{
 };
 
 /// Vulkan SPIRV compute kernels to be compiled with `krnlc`.
+/// 
+/// This #[module] scope is extracted to a separate crate to compile,
+/// so it doesn't have access to the outer scope in this crate.
 #[module]
 mod kernels {
     #[cfg(not(target_arch = "spirv"))]
@@ -26,22 +29,25 @@ mod kernels {
 
     /// Simple example scalar XPU kernel for 64-bit floats.
     #[kernel]
-    pub fn affine(#[item] a: f64, #[item] b: f64, #[item] x: f64, #[item] y: &mut f64) {
+    pub fn affine_kernel(#[item] a: f64, #[item] b: f64, #[item] x: f64, #[item] y: &mut f64) {
         *y = affine_scalar(a, b, x);
     }
 }
 
-// We can re-export generic functions from inside a #[module] scope.
-pub use kernels::affine_scalar;
+// We can re-export functions from inside a #[module] scope.
+pub use kernels::{affine_scalar, affine_kernel};
 
-/// Run `y = a*x + b` for slice inputs on a compute device. 
+/// Run `y = a*x + b` for slice inputs on a compute device.
+/// 
+/// This function has to be defined outside the #[module] scope or behind a config flag
+/// because it uses stdlib functionality and is not, itself, a #[no_std]-compatible kernel function.
 pub fn affine_device(a: Slice<f64>, b: Slice<f64>, x: Slice<f64>, y: SliceMut<f64>) -> Result<()> {
     if a.len() != b.len() || a.len() != x.len() || a.len() != y.len() {
         bail!("a, b, x, and y lengths must match");
     }
 
     // Kernels are cached per-device internally, so we don't need to wrap this in a LazyCell.
-    kernels::affine::builder()?
+    kernels::affine_kernel::builder()?
         .build(y.device())?
         .dispatch(a, b, x, y)
 }
