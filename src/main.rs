@@ -3,14 +3,14 @@ use std::sync::LazyLock;
 use krnl::{
     anyhow::{Context, Result, bail},
     buffer::Buffer,
-    device::Device
+    device::Device,
 };
 
-mod helpers;
+pub(crate) mod helpers;
 use helpers::{print_available_devices, print_device_capabilities};
 
-mod kernels;
-use kernels::affine;
+pub(crate) mod kernels;
+use kernels::affine_device;
 
 /// Device handle to be initialized once then never again.
 static DEVICE: LazyLock<Result<Device>> = LazyLock::new(|| {
@@ -42,7 +42,7 @@ fn main() -> Result<()> {
     let x = Buffer::from(x).into_device(device.clone())?;
     let mut y = Buffer::<f64>::zeros(device.clone(), x.len())?;
 
-    affine(a.as_slice(), b.as_slice(), x.as_slice(), y.as_slice_mut())?;
+    affine_device(a.as_slice(), b.as_slice(), x.as_slice(), y.as_slice_mut())?;
     device.wait()?;
 
     let y = y.into_vec()?;
