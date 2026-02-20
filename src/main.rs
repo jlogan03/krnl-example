@@ -2,76 +2,15 @@ use std::sync::LazyLock;
 
 use krnl::{
     anyhow::{Context, Result, bail},
-    buffer::{Buffer, Slice, SliceMut},
-    device::{Device, error::DeviceIndexOutOfRange},
-    macros::module,
+    buffer::Buffer,
+    device::Device
 };
 
-/// Compute kernels to be compiled with `krnlc`
-#[module]
-mod kernels {
-    #[cfg(not(target_arch = "spirv"))]
-    use krnl::krnl_core;
-    use krnl_core::macros::kernel;
+mod helpers;
+use helpers::{print_available_devices, print_device_capabilities};
 
-    #[kernel]
-    pub fn affine(#[item] a: f64, #[item] b: f64, #[item] x: f64, #[item] y: &mut f64) {
-        *y = a * x + b;
-    }
-}
-
-fn affine(a: Slice<f64>, b: Slice<f64>, x: Slice<f64>, y: SliceMut<f64>) -> Result<()> {
-    if a.len() != b.len() || a.len() != x.len() || a.len() != y.len() {
-        bail!("a, b, x, and y lengths must match");
-    }
-
-    kernels::affine::builder()?
-        .build(y.device())?
-        .dispatch(a, b, x, y)
-}
-
-/// Pretty-print device info including threads and numeric features.
-fn print_device_capabilities(device: &Device) {
-    if let Some(info) = device.info() {
-        println!("{:#?}", info); 
-    } else {
-        println!("device capabilities: host backend");
-    }
-}
-
-/// Get a list of available devices.
-fn available_devices() -> Vec<Device> {
-    let mut devices = Vec::new();
-    for index in 0usize.. {
-        match Device::builder().index(index).build() {
-            Ok(device) => {
-                devices.push(device);
-            }
-            Err(err) => {
-                if err.downcast_ref::<DeviceIndexOutOfRange>().is_some() {
-                    break;
-                }
-                eprintln!("warning: failed to create device {index}: {err:#}");
-                break;
-            }
-        }
-    }
-    devices
-}
-
-/// Pretty-print info for each available device.
-fn print_available_devices() {
-    println!("Available devices:");
-    let devices = available_devices();
-    if devices.is_empty() {
-        println!("  (none)");
-        return;
-    }
-    for (index, device) in devices.into_iter().enumerate() {
-        println!("    [{index}] {device:?}");
-        print_device_capabilities(&device);
-    }
-}
+mod kernels;
+use kernels::affine;
 
 /// Device handle to be initialized once then never again.
 static DEVICE: LazyLock<Result<Device>> = LazyLock::new(|| {
