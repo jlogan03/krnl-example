@@ -1,3 +1,5 @@
+use std::sync::LazyLock;
+
 use krnl::{
     anyhow::{Context, Result, bail},
     buffer::{Buffer, Slice, SliceMut},
@@ -45,17 +47,25 @@ fn print_device_capabilities(device: &Device) {
     }
 }
 
-fn main() -> Result<()> {
-    let a = vec![2.0f64, 2.0, 2.0, 2.0];
-    let b = vec![1.0f64, 1.0, 1.0, 1.0];
-    let x = vec![0.0f64, 1.0, 2.0, 3.5];
-
+/// Device handle to be initialized once then never again.
+static DEVICE: LazyLock<Result<Device>> = LazyLock::new(|| {
     let device = Device::builder()
         .build()
         .context("No Vulkan device found. Install Vulkan and check `vulkaninfo --summary`.")?;
     if !device.is_device() {
         bail!("Expected a device-backed runtime, got host");
     }
+    Ok(device)
+});
+
+fn main() -> Result<()> {
+    let a = vec![2.0f64, 2.0, 2.0, 2.0];
+    let b = vec![1.0f64, 1.0, 1.0, 1.0];
+    let x = vec![0.0f64, 1.0, 2.0, 3.5];
+
+    let device = (&*DEVICE)
+        .as_ref()
+        .map_err(|err| krnl::anyhow::anyhow!("{err:#}"))?;
     print_device_capabilities(&device);
 
     let a = Buffer::from(a).into_device(device.clone())?;
