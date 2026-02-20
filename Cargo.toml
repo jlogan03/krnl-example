@@ -1,13 +1,13 @@
 [package]
 name = "krnl-example"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 publish = false
 
 [dependencies]
 half = { version = "=2.3.1", default-features = false, optional = true }
 libm = { version = "=0.2.8", default-features = false, optional = true }
-krnl = "0.1.1"
+krnl = { git = "https://github.com/jlogan03/krnl.git", branch = "jlogan/update-deps" }
 
 [package.metadata.krnlc.dependencies]
 # Pass pinned deps through to krnlc.

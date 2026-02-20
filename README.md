@@ -3,14 +3,15 @@
 Install the version of rustc nightly and rustc extras that `krnlc` needs:
 
 ```bash
-rustup toolchain install nightly-2023-05-27
-rustup component add --toolchain nightly-2023-05-27 rust-src rustc-dev llvm-tools-preview
+rustup toolchain install nightly-2025-06-30
+rustup component add --toolchain nightly-2025-06-30 rust-src rustc-dev llvm-tools
 ```
 
-Install `krnlc` using its required version of rustc:
+Install `krnlc` from the same git branch as `krnl`:
 
 ```bash
-cargo +nightly-2023-05-27 install krnlc --locked
+cargo +nightly-2025-06-30 install --git git@github.com:jlogan03/krnl.git \
+  --branch jlogan/update-deps --locked --force krnlc
 ```
 
 Build the kernel cache for this crate:
