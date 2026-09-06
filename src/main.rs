@@ -1,9 +1,7 @@
 use std::sync::LazyLock;
 
 use krnl::{
-    anyhow::{Context, Result, bail},
-    buffer::Buffer,
-    device::Device,
+    anyhow::{Context, Result, bail}, buffer::{Buffer, Slice}, device::Device,
 };
 
 pub(crate) mod helpers;
@@ -28,9 +26,8 @@ fn main() -> Result<()> {
     let b = vec![1.0f64, 1.0, 1.0, 1.0];
     let x = vec![0.0f64, 1.0, 2.0, 3.5];
 
-    print_available_devices();
-
     // Identify compute device
+    print_available_devices();
     let device = (&*DEVICE)
         .as_ref()
         .map_err(|err| krnl::anyhow::anyhow!("{err:#}"))?;
@@ -38,13 +35,12 @@ fn main() -> Result<()> {
     println!("Using device:");
     print_device_capabilities(&device);
 
-    // Move data to GPU
-    let a = Buffer::from(a).into_device(device.clone())?;
-    let b = Buffer::from(b).into_device(device.clone())?;
-    let x = Buffer::from(x).into_device(device.clone())?;
+    // Move data to device
+    let dbuf = |v: &[f64]| {Slice::from(v).into_device(device.clone())};
+    let (a, b, x) = (dbuf(&a)?, dbuf(&b)?, dbuf(&x)?);
     let mut y = Buffer::<f64>::zeros(device.clone(), x.len())?;
 
-    // Run calculations
+    // Run calculations on device
     affine_device(a.as_slice(), b.as_slice(), x.as_slice(), y.as_slice_mut())?;
     device.wait()?;
 
