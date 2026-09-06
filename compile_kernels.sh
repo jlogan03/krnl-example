@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 
-TOOLCHAIN=nightly-2025-06-30
-KRNLC_REPO=https://github.com/jlogan03/krnl.git
-KRNLC_BRANCH=jlogan/update-deps
+set -eu
 
-# Keep krnlc aligned with the krnl git dependency to avoid version mismatch errors.
-cargo +"$TOOLCHAIN" install --git "$KRNLC_REPO" --branch "$KRNLC_BRANCH" --locked krnlc
+# Resolve paths relative to this script, even when invoked from another directory.
+cd "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+EXAMPLE_MANIFEST="$PWD/Cargo.toml"
 
-krnlc
+# Running from krnlc's directory selects its pinned rust-toolchain.toml.
+# Use the local compiler, matching the local krnl dependency in Cargo.toml.
+(
+    cd ../krnl/krnlc
+    cargo run --locked --release -- --manifest-path "$EXAMPLE_MANIFEST" "$@"
+)

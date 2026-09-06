@@ -2,12 +2,13 @@
 name = "krnl-example"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.95"
 publish = false
 
 [dependencies]
 half = { version = "=2.3.1", default-features = false, optional = true }
 libm = { version = "=0.2.8", default-features = false, optional = true }
-krnl = { git = "https://github.com/jlogan03/krnl.git", branch = "jlogan/update-deps" }
+krnl = { path = "../krnl" }
 
 [package.metadata.krnlc.dependencies]
 # Pass pinned deps through to krnlc.
@@ -15,3 +16,9 @@ krnl = { git = "https://github.com/jlogan03/krnl.git", branch = "jlogan/update-d
 # are too new.
 half = {}
 libm = {}
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(target_arch, values("spirv"))',
+    'cfg(krnlc)',
+] }

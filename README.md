@@ -1,26 +1,27 @@
 # krnl-example
 
-Install the version of rustc nightly and rustc extras that `krnlc` needs:
+This example uses the sibling `../krnl` checkout for both the library and kernel
+compiler. Its rust-gpu dependencies are pinned to upstream commit `7fa56ad6e8`.
+The host application requires Rust 1.95 or newer.
+
+Install the version of Rust nightly and components that `krnlc` needs:
 
 ```bash
-rustup toolchain install nightly-2025-06-30
-rustup component add --toolchain nightly-2025-06-30 rust-src rustc-dev llvm-tools
+rustup toolchain install nightly-2026-05-22 --profile minimal \
+  --component rust-src,rustc-dev,llvm-tools
 ```
 
-Install `krnlc` from the same git branch as `krnl`:
+Build the local compiler and regenerate the kernel cache for this crate:
 
 ```bash
-cargo +nightly-2025-06-30 install --git git@github.com:jlogan03/krnl.git \
-  --branch jlogan/update-deps --locked --force krnlc
+bash compile_kernels.sh
 ```
 
-Build the kernel cache for this crate:
+The script uses `../krnl/krnlc/rust-toolchain.toml` and its locked dependencies.
+The first build compiles SPIRV-Tools from source and requires a C++ compiler.
+Re-run it after changing kernels or updating `../krnl`.
 
-```bash
-sh krnlc.sh
-```
-
-Run the example:
+Run the example with a Vulkan 1.2-capable device and driver supporting `f64`:
 
 ```bash
 cargo run

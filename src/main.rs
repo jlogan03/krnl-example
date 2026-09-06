@@ -30,6 +30,7 @@ fn main() -> Result<()> {
 
     print_available_devices();
 
+    // Identify compute device
     let device = (&*DEVICE)
         .as_ref()
         .map_err(|err| krnl::anyhow::anyhow!("{err:#}"))?;
@@ -37,16 +38,22 @@ fn main() -> Result<()> {
     println!("Using device:");
     print_device_capabilities(&device);
 
+    // Move data to GPU
     let a = Buffer::from(a).into_device(device.clone())?;
     let b = Buffer::from(b).into_device(device.clone())?;
     let x = Buffer::from(x).into_device(device.clone())?;
     let mut y = Buffer::<f64>::zeros(device.clone(), x.len())?;
 
+    // Run calculations
     affine_device(a.as_slice(), b.as_slice(), x.as_slice(), y.as_slice_mut())?;
     device.wait()?;
 
-    let y = y.into_vec()?;
+    // Bring results back to CPU memory
+    let (a, b, x, y) = (a.into_vec()?, b.into_vec()?, x.into_vec()?, y.into_vec()?);
     assert_eq!(y, vec![1.0, 3.0, 5.0, 8.0]);
-    println!("y = {y:?}");
+    println!("a = {a:?}");
+    println!("b = {b:?}");
+    println!("x = {x:?}");
+    println!("y = {y:?} = ax + b");
     Ok(())
 }
