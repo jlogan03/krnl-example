@@ -63,13 +63,14 @@ mod kernels {
                 #[item] sum: &mut f32,
                 #[item] residual: &mut f32,
             ) {
-                // Divide into contiguous chunks, distributing any remainder
-                // across the first items so every input is consumed once.
+                // Interleave reads so neighboring GPU threads access neighboring
+                // elements, allowing memory requests to coalesce. For large inputs
+                // this is substantially faster than the contiguous per-thread
+                // chunks used by the CPU. Distribute the tail so each input is read once.
                 let size = values.len() / kernel.items();
                 let remainder = values.len() % kernel.items();
-                let start = kernel.item_id() * size + kernel.item_id().min(remainder);
-                let end = start + size + usize::from(kernel.item_id() < remainder);
-                let chunk = (start..end).map(|i| values[i]);
+                let count = size + usize::from(kernel.item_id() < remainder);
+                let chunk = (0..count).map(|i| values[i * kernel.items() + kernel.item_id()]);
                 (*sum, *residual) = local_sum(chunk);
             }
 

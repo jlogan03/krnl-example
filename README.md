@@ -38,15 +38,15 @@ cargo run --release --example two_sum
 ```
 
 It uses `TwoSum` from the sibling `../deimos/software/deimos_numerics` crate,
-with its allocation features disabled. Each million-element input reduces to one
+with its allocation features disabled. Each 10-million-element input reduces to one
 `f32` scalar. All accumulators use two banks, including the parallel CPU baseline.
 The CPU uses Rayon to reduce contiguous chunks, capped at the smaller of the
 physical-core count and the Rayon worker count, following `interpn`. It merges
 the resulting sum/residual pairs before rounding. The plain `f32` comparison
 remains single-threaded; CPU/GPU ratios use the parallel compensated CPU time.
 
-The parallel GPU procedure uses three passes: up to 8,192 threads each reduce a
-contiguous input chunk, up to 256 threads merge chunks of those partial pairs,
+The parallel GPU procedure uses three passes: up to 8,192 threads reduce
+interleaved input elements, up to 256 threads merge chunks of those partial pairs,
 and one thread merges the remaining pairs into the final scalar. Set `THREADS`
 and `REDUCTION_THREADS` in `parallel_twosum` to adjust the two parallel thread
 counts; krnl handles dispatch sizing automatically. Both components of each

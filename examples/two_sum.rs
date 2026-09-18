@@ -183,7 +183,7 @@ fn main() -> Result<()> {
         println!("Use cargo run --release --example two_sum for performance comparisons.");
     }
 
-    const INPUTS: usize = 1_000_000;
+    const INPUTS: usize = 10_000_000;
     const SEED: u64 = 42;
     let mut rng = StdRng::seed_from_u64(SEED);
     // Normal values only: differences here cannot be explained by subnormals.
@@ -202,7 +202,7 @@ fn main() -> Result<()> {
 
     // Large initial values hide small integer increments in plain f32 arithmetic.
     // Cancel the large values at the end to expose the accumulated lost increments.
-    // Every input and the exact final integer sum fit in f64 (and the final sum in f32).
+    // The integer sum is exact in f64; the final f32 result may need rounding.
     let mut cancellation = vec![16_777_216.0_f32; 8];
     cancellation.extend((0..INPUTS - 16).map(|_| rng.random_range(1..4) as f32));
     cancellation.extend([-16_777_216.0; 8]);
@@ -213,9 +213,8 @@ fn main() -> Result<()> {
         &device,
     )?;
     assert_eq!(
-        f64::from(result),
-        expected,
-        "compensation must recover the small increments"
+        result, expected as f32,
+        "compensation must recover the small increments up to final f32 rounding"
     );
     Ok(())
 }
