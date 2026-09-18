@@ -7,8 +7,7 @@ use krnl::{
 pub(crate) mod helpers;
 use helpers::{print_available_devices, print_device_capabilities};
 
-pub(crate) mod kernels;
-use kernels::affine_device;
+use krnl_example::kernels::affine_device;
 
 /// Device handle to be initialized once then never again.
 static DEVICE: LazyLock<Result<Device>> = LazyLock::new(|| {

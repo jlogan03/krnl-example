@@ -9,6 +9,10 @@ publish = false
 half = { version = "=2.3.1", default-features = false, optional = true }
 libm = { version = "=0.2.8", default-features = false, optional = true }
 krnl = { path = "../krnl" }
+deimos_numerics = { path = "../deimos/software/deimos_numerics", default-features = false }
+
+[dev-dependencies]
+rand = "0.9"
 
 [package.metadata.krnlc.dependencies]
 # Pass pinned deps through to krnlc.
@@ -16,6 +20,7 @@ krnl = { path = "../krnl" }
 # are too new.
 half = {}
 libm = {}
+deimos_numerics = {}
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
