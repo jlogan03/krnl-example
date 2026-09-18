@@ -39,7 +39,11 @@ cargo run --release --example two_sum
 
 It uses `TwoSum` from the sibling `../deimos/software/deimos_numerics` crate,
 with its allocation features disabled. Each million-element input reduces to one
-`f32` scalar. All accumulators use two banks, including the sequential CPU baseline.
+`f32` scalar. All accumulators use two banks, including the parallel CPU baseline.
+The CPU uses Rayon to reduce contiguous chunks, capped at the smaller of the
+physical-core count and the Rayon worker count, following `interpn`. It merges
+the resulting sum/residual pairs before rounding. The plain `f32` comparison
+remains single-threaded; CPU/GPU ratios use the parallel compensated CPU time.
 
 The parallel GPU procedure uses three passes: up to 8,192 threads each reduce a
 contiguous input chunk, up to 256 threads merge chunks of those partial pairs,
@@ -54,8 +58,8 @@ The example compares compensated CPU, strict GPU and fast-math GPU results with
 a plain `f32` sum and an `f64` reference. Seeded random inputs and small increments
 followed by large cancellation demonstrate rounding loss without subnormals.
 Compensation improves accuracy but does not promise exact, order-independent
-sums for arbitrary inputs. Strict GPU results are checked against the rounded `f64` reference for these
-benchmark datasets.
+sums for arbitrary inputs. Compensated CPU and strict GPU results are checked
+against the rounded `f64` reference for these benchmark datasets.
 
 CPU, GPU dispatch and input upload timings average 20 runs after warm-up; GPU
 timings include waiting for completion. Each GPU policy runs the parallel

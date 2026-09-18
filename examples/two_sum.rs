@@ -1,17 +1,49 @@
+use deimos_numerics::twosum::TwoSum;
 use krnl::{
     anyhow::{Context, Result, ensure},
     buffer::{Buffer, Slice},
     device::Device,
 };
-use krnl_example::kernels::{compensated_sum, parallel_twosum};
+use krnl_example::kernels::parallel_twosum;
 use rand::{Rng, SeedableRng, rngs::StdRng};
+use rayon::prelude::*;
 use std::{
     hint::black_box,
+    sync::LazyLock,
     time::{Duration, Instant},
 };
 
 const TIMING_RUNS: u32 = 20;
 const GPU_WARMUP: Duration = Duration::from_secs(3);
+
+// Match interpn: cache physical-core discovery, then cap it by the Rayon pool.
+static PHYSICAL_CORES: LazyLock<usize> = LazyLock::new(num_cpus::get_physical);
+
+fn cpu_threads() -> usize {
+    (*PHYSICAL_CORES).min(rayon::current_num_threads()).max(1)
+}
+
+fn cpu_compensated_sum(values: &[f32], threads: usize) -> f32 {
+    let chunk_size = values.len().div_ceil(threads.max(1)).max(1);
+    let partials: Vec<_> = values
+        .par_chunks(chunk_size)
+        .map(|chunk| {
+            let mut acc = TwoSum::<f32, 2>::new(0.0);
+            for &value in chunk {
+                acc.add(value);
+            }
+            acc.finish()
+        })
+        .collect();
+    // Merge in chunk order, retaining each residual until the final rounding.
+    let mut acc = TwoSum::<f32, 2>::new(0.0);
+    for (sum, residual) in partials {
+        acc.add(sum);
+        acc.add(residual);
+    }
+    let (sum, residual) = acc.finish();
+    sum + residual
+}
 
 // Warm up once, then average complete runs. GPU callers wait inside the timer.
 fn time_runs(mut run: impl FnMut() -> Result<()>) -> Result<Duration> {
@@ -92,11 +124,16 @@ fn run_case(name: &str, values: &[f32], device: &Device) -> Result<f32> {
     // The CPU and GPU call the same deimos_numerics two-bank procedure.
     // The f64 sum is a reference, not a claim that compensated f32 is error-free.
     let reference: f64 = values.iter().map(|&x| f64::from(x)).sum();
+    let threads = cpu_threads();
     let mut cpu_result = 0.0;
     let cpu_time = time_runs(|| {
-        cpu_result = black_box(compensated_sum(black_box(values).iter().copied()));
+        cpu_result = black_box(cpu_compensated_sum(black_box(values), threads));
         Ok(())
     })?;
+    ensure!(
+        cpu_result == reference as f32,
+        "CPU result differs from rounded reference"
+    );
     let mut naive_result = 0.0;
     let naive_time = time_runs(|| {
         naive_result = black_box(black_box(values).iter().copied().sum::<f32>());
@@ -124,7 +161,7 @@ fn run_case(name: &str, values: &[f32], device: &Device) -> Result<f32> {
     }
     println!("Timing (mean of {TIMING_RUNS} runs after warm-up):");
     println!("  CPU plain f32, single thread:       {naive_time:.3?}");
-    println!("  CPU compensated f32, single thread: {cpu_time:.3?}");
+    println!("  CPU compensated f32, {threads} Rayon chunks: {cpu_time:.3?}");
     println!("  Input upload, reused buffer:        {upload_time:.3?}");
     println!("One-time setup:");
     println!("  Input allocation + initialization: {input_allocation_time:.3?}");
@@ -181,4 +218,28 @@ fn main() -> Result<()> {
         "compensation must recover the small increments"
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cpu_compensated_sum;
+
+    #[test]
+    fn cpu_chunk_reduction_preserves_residuals() {
+        for threads in [1, 2, 3, 8] {
+            for len in [0, 1, 7, 17, 1025] {
+                let mut values = vec![1.0_f32; len];
+                if len > 1 {
+                    values[0] = 16_777_216.0;
+                    values[len - 1] = -16_777_216.0;
+                }
+                let expected: f64 = values.iter().map(|&x| f64::from(x)).sum();
+                assert_eq!(f64::from(cpu_compensated_sum(&values, threads)), expected);
+            }
+            assert_eq!(
+                cpu_compensated_sum(&[f32::from_bits(1); 17], threads).to_bits(),
+                17
+            );
+        }
+    }
 }

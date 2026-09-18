@@ -13,6 +13,8 @@ deimos_numerics = { path = "../deimos/software/deimos_numerics", default-feature
 
 [dev-dependencies]
 rand = "0.9"
+rayon = "1.12"
+num_cpus = "1.17"
 
 [package.metadata.krnlc.dependencies]
 # Pass pinned deps through to krnlc.
