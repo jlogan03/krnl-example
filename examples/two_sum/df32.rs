@@ -1,4 +1,4 @@
-use super::{GPU_WARMUP, cpu_threads, time_runs};
+use super::{CaseSummary, GPU_WARMUP, cpu_threads, time_runs};
 use krnl::{
     anyhow::{Result, ensure},
     buffer::Buffer,
@@ -24,6 +24,7 @@ pub fn benchmark(
     device: &Device,
     reference: f64,
     upload: std::time::Duration,
+    summary: &mut CaseSummary,
 ) -> Result<()> {
     println!("Df32: same f32 input, two pair banks per invocation, pair output retained.");
     let threads = cpu_threads();
@@ -33,6 +34,13 @@ pub fn benchmark(
         Ok(())
     })?;
     ensure!(cpu_result.is_finite(), "CPU Df32 overflowed");
+    summary.record(
+        "Df32",
+        format!("CPU {threads}"),
+        cpu_result.to_f64(),
+        cpu_time,
+        None,
+    );
     println!(
         "  CPU Df32, {threads} Rayon chunks: result={:.12e}, absolute error={:.9e}, mean={cpu_time:.3?}",
         cpu_result.to_f64(),
@@ -68,6 +76,13 @@ pub fn benchmark(
             strict_bits = bits;
         }
         let total = upload + gpu_time + download;
+        summary.record(
+            "Df32",
+            format!("GPU {policy}"),
+            result,
+            gpu_time,
+            Some(total),
+        );
         println!(
             "  GPU Df32/{policy}: result={result:.12e}, absolute error={:.9e}",
             (result - reference).abs()

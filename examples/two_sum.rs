@@ -1,6 +1,10 @@
 #[path = "two_sum/df32.rs"]
 mod df32_bench;
 
+#[path = "two_sum/summary.rs"]
+mod summary;
+use summary::CaseSummary;
+
 #[cfg(feature = "half")]
 #[path = "two_sum/half.rs"]
 mod half_bench;
@@ -68,6 +72,7 @@ fn benchmark_parallel(
     reference: f64,
     cpu_time: Duration,
     upload_time: Duration,
+    summary: &mut CaseSummary,
 ) -> Result<f32> {
     println!(
         "Parallel reduction: 8192 chunk threads -> 256 reduction threads -> one scalar, two banks/thread."
@@ -114,6 +119,13 @@ fn benchmark_parallel(
         }
         // Combine mean upload/dispatch times with a single scalar readback.
         let total = upload_time + time + download;
+        summary.record(
+            "TwoSum",
+            format!("GPU {policy}"),
+            f64::from(result),
+            time,
+            Some(total),
+        );
         println!("  {policy}: result={result:.9e}, absolute error={error:.9e}");
         println!("    scalar download={download:.3?}");
         println!(
@@ -125,12 +137,13 @@ fn benchmark_parallel(
     Ok(strict_result)
 }
 
-fn run_case(name: &str, values: &[f32], device: &Device) -> Result<f32> {
+fn run_case(name: &str, values: &[f32], device: &Device) -> Result<(f32, CaseSummary)> {
     println!("\n{name}: {} f32 values -> one f32 scalar", values.len());
 
     // The CPU and GPU call the same deimos_numerics two-bank procedure.
     // The f64 sum is a reference, not a claim that compensated f32 is error-free.
     let reference: f64 = values.iter().map(|&x| f64::from(x)).sum();
+    let mut summary = CaseSummary::new(name, values.len(), reference);
     let threads = cpu_threads();
     let mut cpu_result = 0.0;
     let cpu_time = time_runs(|| {
@@ -146,6 +159,20 @@ fn run_case(name: &str, values: &[f32], device: &Device) -> Result<f32> {
         naive_result = black_box(black_box(values).iter().copied().sum::<f32>());
         Ok(())
     })?;
+    summary.record(
+        "f32",
+        "CPU serial".into(),
+        f64::from(naive_result),
+        naive_time,
+        None,
+    );
+    summary.record(
+        "TwoSum",
+        format!("CPU {threads}"),
+        f64::from(cpu_result),
+        cpu_time,
+        None,
+    );
 
     // Allocate once and measure uploads into the existing input buffer.
     let start = Instant::now();
@@ -173,9 +200,16 @@ fn run_case(name: &str, values: &[f32], device: &Device) -> Result<f32> {
     println!("One-time setup:");
     println!("  Input allocation + initialization: {input_allocation_time:.3?}");
     println!("GPU totals with transfers exclude allocation; CPU/GPU ratios >1 mean GPU faster.");
-    let strict = benchmark_parallel(&input, device, reference, cpu_time, upload_time)?;
-    df32_bench::benchmark(values, &input, device, reference, upload_time)?;
-    Ok(strict)
+    let strict = benchmark_parallel(
+        &input,
+        device,
+        reference,
+        cpu_time,
+        upload_time,
+        &mut summary,
+    )?;
+    df32_bench::benchmark(values, &input, device, reference, upload_time, &mut summary)?;
+    Ok((strict, summary))
 }
 
 fn main() -> Result<()> {
@@ -203,7 +237,7 @@ fn main() -> Result<()> {
         })
         .collect();
     println!("Random seed: {SEED}");
-    run_case(
+    let (_, random_summary) = run_case(
         "Random signed values, magnitudes [1, 1e6)",
         &random,
         &device,
@@ -216,7 +250,7 @@ fn main() -> Result<()> {
     cancellation.extend((0..INPUTS - 16).map(|_| rng.random_range(1..4) as f32));
     cancellation.extend([-16_777_216.0; 8]);
     let expected: f64 = cancellation.iter().map(|&x| f64::from(x)).sum();
-    let result = run_case(
+    let (result, cancellation_summary) = run_case(
         "Small increments followed by large cancellation",
         &cancellation,
         &device,
@@ -225,8 +259,14 @@ fn main() -> Result<()> {
         result, expected as f32,
         "compensation must recover the small increments up to final f32 rounding"
     );
+    let summaries = vec![random_summary, cancellation_summary];
     #[cfg(feature = "half")]
-    half_bench::benchmark(INPUTS, &mut rng, &device)?;
+    let summaries = {
+        let mut summaries = summaries;
+        half_bench::benchmark(INPUTS, &mut rng, &device, &mut summaries)?;
+        summaries
+    };
+    summary::print(&summaries);
     Ok(())
 }
 

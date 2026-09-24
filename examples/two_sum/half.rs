@@ -1,4 +1,4 @@
-use super::{GPU_WARMUP, TIMING_RUNS, cpu_threads, run_case, time_runs};
+use super::{CaseSummary, GPU_WARMUP, TIMING_RUNS, cpu_threads, run_case, time_runs};
 use half_reduction::{decode, decode_pair, encode, sum_df16, sum_f16};
 use krnl::{
     anyhow::{Result, ensure},
@@ -27,13 +27,13 @@ fn cpu_sum(values: &[u16], threads: usize, paired: bool) -> u32 {
     }
 }
 
-fn run(name: &str, source: &[f32], device: &Device) -> Result<()> {
+fn run(name: &str, source: &[f32], device: &Device) -> Result<CaseSummary> {
     // Round once before any timing. All CPU/GPU types see the same quantized
     // mathematical input, including the existing f32 TwoSum comparison.
     let values: Vec<_> = source.iter().map(|&x| encode(x)).collect();
     let reference: f64 = values.iter().map(|&x| decode(x)).sum();
     let singles: Vec<_> = values.iter().map(|&x| decode(x) as f32).collect();
-    run_case(name, &singles, device)?;
+    let (_, mut summary) = run_case(name, &singles, device)?;
     println!(
         "Half variants: {} quantized f16 inputs; reference={reference:.12e}",
         values.len()
@@ -63,6 +63,7 @@ fn run(name: &str, source: &[f32], device: &Device) -> Result<()> {
         })?;
         let cpu_result = decode_pair(cpu_bits);
         ensure!(cpu_result.is_finite(), "CPU {label} overflowed");
+        summary.record(label, format!("CPU {threads}"), cpu_result, cpu_time, None);
         println!(
             "  CPU {label}, {threads} Rayon chunks: result={cpu_result:.12e}, absolute error={:.9e}, mean={cpu_time:.3?}",
             (cpu_result - reference).abs()
@@ -93,6 +94,13 @@ fn run(name: &str, source: &[f32], device: &Device) -> Result<()> {
                 strict_bits = bits;
             }
             let total = upload + gpu_time + download;
+            summary.record(
+                label,
+                format!("GPU {policy}"),
+                result,
+                gpu_time,
+                Some(total),
+            );
             println!(
                 "  GPU {label}/{policy}: result={result:.12e}, absolute error={:.9e}",
                 (result - reference).abs()
@@ -107,10 +115,15 @@ fn run(name: &str, source: &[f32], device: &Device) -> Result<()> {
             }
         }
     }
-    Ok(())
+    Ok(summary)
 }
 
-pub fn benchmark(inputs: usize, rng: &mut impl Rng, device: &Device) -> Result<()> {
+pub fn benchmark(
+    inputs: usize,
+    rng: &mut impl Rng,
+    device: &Device,
+    summaries: &mut Vec<CaseSummary>,
+) -> Result<()> {
     println!(
         "\nHalf-range datasets; timings average {TIMING_RUNS} runs, warm-up {GPU_WARMUP:?}/policy."
     );
@@ -120,22 +133,23 @@ pub fn benchmark(inputs: usize, rng: &mut impl Rng, device: &Device) -> Result<(
             if rng.random() { x } else { -x }
         })
         .collect();
-    run(
+    summaries.push(run(
         "Quantized half random signed magnitudes [1/16, 1)",
         &random,
         device,
-    )?;
+    )?);
 
     // Normal half inputs and bounded totals. Large-value cancellation exposes
     // lost increments without giving the half variants overflowing inputs.
     let mut cancellation = vec![128.0f32; 8];
     cancellation.extend(std::iter::repeat_n(2f32.powi(-14), inputs - 16));
     cancellation.extend([-128.0f32; 8]);
-    run(
+    summaries.push(run(
         "Quantized half small increments followed by cancellation",
         &cancellation,
         device,
-    )
+    )?);
+    Ok(())
 }
 
 #[cfg(test)]

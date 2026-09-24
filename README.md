@@ -77,6 +77,12 @@ before timing.
 Transfer-inclusive GPU totals sum the mean upload and dispatch times with the
 one-time output download; they exclude device-buffer allocation.
 
+The final summary prints one table per dataset with every enabled CPU/GPU
+variant, strict/fast GPU policy, result, absolute error against the `f64`
+reference, compute time, and transfer-inclusive GPU total. CPU execution labels
+distinguish the serial f32 baseline from the Rayon chunk count. Tables reuse the
+measurements above without running additional reductions.
+
 ## Df32 reduction comparison
 
 The default TwoSum benchmark also includes `num-synth::Df32`, using the
