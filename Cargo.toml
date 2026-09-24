@@ -5,16 +5,24 @@ edition = "2024"
 rust-version = "1.95"
 publish = false
 
+[features]
+half = ["dep:half", "dep:half-reduction"]
+
 [dependencies]
 half = { version = "=2.3.1", default-features = false, optional = true }
 libm = { version = "=0.2.8", default-features = false, optional = true }
 krnl = { path = "../krnl" }
+num-synth = { path = "../num-synth" }
+half-reduction = { path = "half-reduction", optional = true }
 deimos_numerics = { path = "../deimos/software/deimos_numerics", default-features = false }
 
 [dev-dependencies]
 rand = "0.9"
 rayon = "1.12"
 num_cpus = "1.17"
+
+[package.metadata.krnlc]
+features = ["half"]
 
 [package.metadata.krnlc.dependencies]
 # Pass pinned deps through to krnlc.
@@ -23,6 +31,8 @@ num_cpus = "1.17"
 half = {}
 libm = {}
 deimos_numerics = {}
+half-reduction = {}
+num-synth = {}
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [

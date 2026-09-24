@@ -1,3 +1,10 @@
+#[path = "two_sum/df32.rs"]
+mod df32_bench;
+
+#[cfg(feature = "half")]
+#[path = "two_sum/half.rs"]
+mod half_bench;
+
 use deimos_numerics::twosum::TwoSum;
 use krnl::{
     anyhow::{Context, Result, ensure},
@@ -166,7 +173,9 @@ fn run_case(name: &str, values: &[f32], device: &Device) -> Result<f32> {
     println!("One-time setup:");
     println!("  Input allocation + initialization: {input_allocation_time:.3?}");
     println!("GPU totals with transfers exclude allocation; CPU/GPU ratios >1 mean GPU faster.");
-    benchmark_parallel(&input, device, reference, cpu_time, upload_time)
+    let strict = benchmark_parallel(&input, device, reference, cpu_time, upload_time)?;
+    df32_bench::benchmark(values, &input, device, reference, upload_time)?;
+    Ok(strict)
 }
 
 fn main() -> Result<()> {
@@ -175,7 +184,7 @@ fn main() -> Result<()> {
         .context("No Vulkan device found")?;
     ensure!(device.is_device(), "Expected a Vulkan device");
     println!("Using device: {device:?}");
-    println!("deimos_numerics TwoSum: two-bank CPU and three-pass GPU reductions.");
+    println!("TwoSum and Df32: two-bank CPU and three-pass GPU reductions.");
     println!(
         "GPU timings use host wall time; dispatch excludes kernel creation and buffer allocation."
     );
@@ -216,6 +225,8 @@ fn main() -> Result<()> {
         result, expected as f32,
         "compensation must recover the small increments up to final f32 rounding"
     );
+    #[cfg(feature = "half")]
+    half_bench::benchmark(INPUTS, &mut rng, &device)?;
     Ok(())
 }
 

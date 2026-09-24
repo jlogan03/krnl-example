@@ -275,6 +275,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "half-reduction"
+version = "0.1.0"
+dependencies = [
+ "num-synth",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -376,8 +383,10 @@ version = "0.1.0"
 dependencies = [
  "deimos_numerics",
  "half",
+ "half-reduction",
  "krnl",
  "libm",
+ "num-synth",
  "num_cpus",
  "rand",
  "rayon",
@@ -466,6 +475,14 @@ checksum = "d273983c5a657a70a3e8f2a01329822f3b8c8172b73826411a55751e404a0a4a"
 dependencies = [
  "memchr",
  "minimal-lexical",
+]
+
+[[package]]
+name = "num-synth"
+version = "0.1.0"
+dependencies = [
+ "libm",
+ "num-traits",
 ]
 
 [[package]]

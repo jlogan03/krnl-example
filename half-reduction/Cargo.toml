@@ -1,0 +1,8 @@
+[package]
+name = "half-reduction"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+num-synth = { path = "../../num-synth", features = ["half"] }
