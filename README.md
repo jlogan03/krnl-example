@@ -1,11 +1,9 @@
 # krnl-example
 
-This example uses the sibling `../krnl` checkout for both the library and kernel
-compiler. Its rust-gpu support crates come from `jlogan03/rust-gpu`'s
-`jlogan/float-controls-default` Git branch, pinned by the Cargo lockfiles.
-`../krnl/krnlc` patches its codegen backend to the sibling `../rust-gpu`
-checkout, which includes the `fmaf16` intrinsic lowering needed when compiling
-`num-synth::Df16`. The compiler manifest and lockfile record this override.
+This example uses `jlogan03/krnl`'s `jlogan/update-deps` Git branch.
+Its rust-gpu support crates come from `jlogan03/rust-gpu`'s
+`jlogan/float-controls-intrinsics` Git branch, pinned by the Cargo lockfiles.
+This branch includes the `fmaf16` intrinsic lowering needed to compile `num-synth::Df16`.
 The default host application requires Rust 1.95 or newer; half benchmarks
 require nightly Rust.
 
@@ -16,15 +14,17 @@ rustup toolchain install nightly-2026-05-22 --profile minimal \
   --component rust-src,rustc-dev,llvm-tools
 ```
 
-Build the local compiler and regenerate the kernel cache for this crate:
+Install the compiler from the same krnl branch and regenerate the kernel cache:
 
 ```bash
+cargo +nightly-2026-05-22 install --git https://github.com/jlogan03/krnl \
+  --branch jlogan/update-deps --locked krnlc
 bash compile_kernels.sh
 ```
 
-The script uses `../krnl/krnlc/rust-toolchain.toml` and its locked dependencies.
+The script uses the installed `krnlc`, which selects its pinned Rust toolchain.
 The first build compiles SPIRV-Tools from source and requires a C++ compiler.
-Re-run it after changing kernels or updating `../krnl`.
+Reinstall the compiler after updating krnl. Regenerate the cache after updating dependencies or changing kernels.
 
 Run the example with a Vulkan 1.2-capable device and driver supporting `f64`,
 `shaderFloatControls2`, f64 subnormal preservation and round-to-nearest/ties-to-even:
@@ -41,7 +41,7 @@ Run the TwoSum correctness and timing comparison with an optimized host build:
 cargo run --release --example two_sum
 ```
 
-It uses `TwoSum` from the sibling `../deimos/software/deimos_numerics` crate,
+It uses `TwoSum` from the `deimos_numerics` Git dependency,
 with its allocation features disabled. Each 10-million-element input reduces to one
 `f32` scalar. All accumulators use two banks, including the parallel CPU baseline.
 The CPU uses Rayon to reduce contiguous chunks, capped at the smaller of the
@@ -85,8 +85,8 @@ measurements above without running additional reductions.
 
 ## Df32 reduction comparison
 
-The default TwoSum benchmark also includes `num-synth::Df32`, using the
-sibling `../num-synth` checkout. No feature flag or nightly host compiler is
+The default TwoSum benchmark also includes `num-synth::Df32` from the
+`jlogan03/num-synth` Git repository. No feature flag or nightly host compiler is
 needed for Df32:
 
 ```bash
@@ -135,7 +135,7 @@ cargo +nightly-2026-05-22 run --release --features half --example two_sum
 
 The cache includes both baseline and half kernels. Default builds still work
 on stable Rust. `half` enables the small no-std `half-reduction` adapter and
-`../num-synth`'s Df16 implementation; Rust's primitive f16 arithmetic executes
+num-synth's Df16 implementation; Rust's primitive f16 arithmetic executes
 inside that adapter. Integer buffers carry exact component bits because
 krnl's public f16 buffer type belongs to the separate `half` crate. The
 adapter does not substitute that crate's f32-based arithmetic.
@@ -192,7 +192,7 @@ Run the CPU/GPU regression tests with:
 cargo +nightly-2026-05-22 test --features half --lib --example two_sum
 ```
 
-The sibling num-synth manifest accepts libm 0.2.8 or newer so this example can
+The num-synth manifest accepts libm 0.2.8 or newer so this example can
 retain krnl's required 0.2.8 pin. Its normal standalone lockfile still selects
 0.2.16. The half reduction itself only uses addition and normalization.
 

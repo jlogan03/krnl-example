@@ -5,4 +5,4 @@ edition = "2024"
 publish = false
 
 [dependencies]
-num-synth = { path = "../../num-synth", features = ["half"] }
+num-synth = { git = "ssh://git@github.com/jlogan03/num-synth", branch = "main", features = ["half"] }
