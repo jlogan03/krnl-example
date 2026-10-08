@@ -4,10 +4,9 @@ use krnl::{
     macros::module,
 };
 
-/// Vulkan SPIRV compute kernels to be compiled with `krnlc`.
+/// Vulkan SPIR-V kernels compiled by `krnlc`.
 ///
-/// This #[module] scope is extracted to a separate crate to compile,
-/// so it doesn't have access to the outer scope in this crate.
+/// `krnlc` compiles this `#[module]` in a separate crate without access to its parent scope.
 #[module]
 mod kernels {
     #[cfg(not(target_arch = "spirv"))]
@@ -15,29 +14,23 @@ mod kernels {
     use krnl_core::macros::kernel;
     use krnl_core::num_traits::Num;
 
-    /// Type-generic example scalar kernel.
+    /// Compute `a*x + b` for a scalar numeric type.
     ///
-    /// Because the krnl `kernels` module can't see its super:: or anything else
-    /// not enclosed in a #[module] scope, this generic scalar kernel must be
-    /// defined here then exported to super:: instead of the other way around.
-    ///
-    /// Alternatively, we could have functions like this one stored in another
-    /// #[module] scope in this crate, or anywhere in another no_std crate.
-    /// They just can't be _both_ inside this crate and outside a #[module] scope.
+    /// Define shared helpers inside a `#[module]` or in a `no_std` dependency.
+    /// The host can re-export them from the module.
     #[inline]
     pub fn affine_scalar<T: Num>(a: T, b: T, x: T) -> T {
         a * x + b
     }
 
-    /// Simple example scalar XPU kernel for 64-bit floats.
+    /// Compute `a*x + b` for each `f64` input item.
     #[kernel]
     pub fn affine_kernel(#[item] a: f64, #[item] b: f64, #[item] x: f64, #[item] y: &mut f64) {
         *y = affine_scalar(a, b, x);
     }
 
-    // deimos_numerics stages values across two compensated banks, then merges
-    // them. Return one f32 scalar by rounding the final sum plus residual.
-    // Reassociation can erase the compensation; intermediate overflow is unsupported.
+    // Merge two compensated accumulators and round the sum plus residual to f32.
+    // Reassociation can erase compensation. Intermediate overflow is unsupported.
     #[inline]
     pub fn compensated_sum(values: impl IntoIterator<Item = f32>) -> f32 {
         let (sum, residual) = local_sum(values);
@@ -53,8 +46,8 @@ mod kernels {
         acc.finish()
     }
 
-    // Both policies use the same three-pass procedure. Each item owns its output,
-    // so no pass needs shared memory, barriers or unsafe indexing.
+    // Both policies use three passes. Each item owns its output.
+    // No pass needs shared memory, barriers, or unsafe indexing.
     macro_rules! parallel_kernels {
         ($first:ident, $middle:ident, $last:ident $(, $policy:ident)?) => {
             #[kernel($($policy)?)]
@@ -63,10 +56,8 @@ mod kernels {
                 #[item] sum: &mut f32,
                 #[item] residual: &mut f32,
             ) {
-                // Interleave reads so neighboring GPU threads access neighboring
-                // elements, allowing memory requests to coalesce. For large inputs
-                // this is substantially faster than the contiguous per-thread
-                // chunks used by the CPU. Distribute the tail so each input is read once.
+                // Neighboring threads read neighboring elements so memory requests can coalesce.
+                // Distribute the tail so each input is read once.
                 let size = values.len() / kernel.items();
                 let remainder = values.len() % kernel.items();
                 let count = size + usize::from(kernel.item_id() < remainder);
@@ -81,8 +72,7 @@ mod kernels {
                 #[item] sum: &mut f32,
                 #[item] residual: &mut f32,
             ) {
-                // Merge a chunk of partial pairs, preserving both components
-                // for the final pass instead of rounding each chunk to a scalar.
+                // Merge partial pairs and retain both components for the final pass.
                 let size = sums.len() / kernel.items();
                 let remainder = sums.len() % kernel.items();
                 let start = kernel.item_id() * size + kernel.item_id().min(remainder);
@@ -101,8 +91,7 @@ mod kernels {
                 #[global] residuals: Slice<f32>,
                 #[item] result: &mut f32,
             ) {
-                // One invocation merges all partial pairs. Rounding each pair
-                // to a scalar earlier would discard its compensation.
+                // Merge all partial pairs before rounding to preserve compensation.
                 let mut acc = deimos_numerics::twosum::TwoSum::<f32, 2>::new(0.0);
                 for i in 0..sums.len() {
                     acc.add(sums[i]);
@@ -136,14 +125,13 @@ mod kernels {
     }
 }
 
-// We can re-export functions from inside a #[module] scope.
 pub use kernels::{affine_kernel, affine_scalar, compensated_sum};
 
-/// Reusable dispatch with owned scratch buffers and prebuilt pipelines.
+/// A reduction that owns its scratch buffers and pipelines.
 pub type ParallelTwoSum = Box<dyn FnMut(Slice<'_, f32>, SliceMut<'_, f32>) -> Result<()>>;
 
-/// Build a parallel reduction with two banks per invocation. Allocation
-/// and pipeline creation happen here; the caller supplies a one-scalar output.
+/// Allocate buffers and pipelines for a reduction with two accumulators per invocation.
+/// The caller supplies an output buffer with one element.
 pub fn parallel_twosum(
     device: krnl::device::Device,
     len: usize,
@@ -153,8 +141,7 @@ pub fn parallel_twosum(
     ensure!(len > 0, "parallel reduction requires nonempty input");
     const THREADS: usize = 8192;
     const REDUCTION_THREADS: usize = 256;
-    // One output item per active thread. krnl uses its default workgroup size
-    // and calculates enough groups to cover these items.
+    // Use one output item per active thread. krnl calculates the workgroup count.
     let partials = len.min(THREADS);
     let mut sums = Buffer::<f32>::zeros(device.clone(), partials)?;
     let mut residuals = Buffer::<f32>::zeros(device.clone(), partials)?;
@@ -205,14 +192,13 @@ pub fn parallel_twosum(
 
 /// Run `y = a*x + b` for slice inputs on a compute device.
 ///
-/// This function has to be defined outside the #[module] scope or behind a config flag
-/// because it uses stdlib functionality and is not, itself, a #[no_std]-compatible kernel function.
+/// Keep this host function outside `#[module]` because it requires `std`.
 pub fn affine_device(a: Slice<f64>, b: Slice<f64>, x: Slice<f64>, y: SliceMut<f64>) -> Result<()> {
     if a.len() != b.len() || a.len() != x.len() || a.len() != y.len() {
         bail!("a, b, x, and y lengths must match");
     }
 
-    // Kernels are cached per-device internally, so we don't need to wrap this in a LazyCell.
+    // krnl caches kernels per device.
     kernels::affine_kernel::builder()?
         .build(y.device())?
         .dispatch(a, b, x, y)
@@ -229,8 +215,7 @@ mod tests {
         for len in [
             1, 7, 127, 128, 129, 1023, 1024, 1025, 8191, 8192, 8193, 32_771, 65_555,
         ] {
-            // Integer data makes the f64 reference exact, including after
-            // cancellation. Lengths cover bank tails and uneven chunk boundaries.
+            // These integers sum exactly in f64. Lengths cover partial banks and uneven chunks.
             let mut values = vec![1.0_f32; len];
             if len > 1 {
                 values[0] = 16_777_216.0;
@@ -264,8 +249,7 @@ mod tests {
         let device = Device::builder().build()?;
         // krnl rejects empty storage buffers, so check empty input on the CPU.
         assert_eq!(kernels::compensated_sum(core::iter::empty()), 0.0);
-        // Cover a single value, a partial bank, and multiple banks
-        // followed by cancellation. The latter loses all 19 units in a plain sum.
+        // Cover partial and full banks. Cancellation loses all 19 increments in a plain sum.
         let mut cancellation = vec![16_777_216.0_f32; 8];
         cancellation.extend([1.0; 19]);
         cancellation.extend([-16_777_216.0; 8]);

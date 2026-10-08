@@ -1,4 +1,4 @@
-//! Native half arithmetic behind integer transport for krnl's buffer ABI.
+//! Rust `f16` arithmetic with integer buffers for krnl.
 #![no_std]
 #![feature(f16)]
 
@@ -19,7 +19,7 @@ pub fn decode_pair(value: u32) -> f64 {
     decode(value as u16) + decode((value >> 16) as u16)
 }
 
-/// Two independent scalar banks, merged once at the end.
+/// Sum with two f16 accumulators and merge them at the end.
 #[inline]
 pub fn sum_f16(mut values: impl Iterator<Item = u16>) -> u16 {
     let (mut a, mut b) = (0.0f16, 0.0f16);
@@ -32,8 +32,8 @@ pub fn sum_f16(mut values: impl Iterator<Item = u16>) -> u16 {
     (a + b).to_bits()
 }
 
-/// Two Df16 banks. Low 16 bits carry hi; upper 16 bits carry lo.
-/// A scalar input is zero-extended to u32, giving it a zero residual.
+/// Sum with two Df16 accumulators. The low 16 bits hold the high component.
+/// The upper 16 bits hold the residual. Zero-extend scalar inputs to `u32` for a zero residual.
 #[inline]
 pub fn sum_df16(mut values: impl Iterator<Item = u32>) -> u32 {
     let unpack = |bits: u32| {

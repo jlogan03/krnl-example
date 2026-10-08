@@ -1,5 +1,5 @@
-//! Half inputs use u16 buffers; Df16 partials use packed (hi, lo) u32 buffers.
-//! Arithmetic is native f16 in half-reduction, not half::f16's f32 emulation.
+//! Half reductions use integer buffers to preserve component bits.
+//! The `half-reduction` crate performs arithmetic with Rust's primitive `f16` type.
 use krnl::{
     anyhow::{Result, ensure},
     buffer::{Buffer, Slice, SliceMut},
@@ -61,8 +61,8 @@ mod kernels {
 
 pub type ParallelHalf = Box<dyn FnMut(Slice<'_, u16>, SliceMut<'_, u32>) -> Result<()>>;
 
-/// The same 8192 -> 256 -> 1 schedule as parallel_twosum. Each invocation
-/// accumulates two banks; packed Df16 partials retain both components.
+/// Reduce with up to 8192, 256, then 1 threads and two accumulators per invocation.
+/// Packed Df16 partials retain both components.
 pub fn parallel_half(
     device: Device,
     len: usize,
@@ -105,9 +105,7 @@ mod tests {
     use super::*;
     use half_reduction::{decode_pair, encode, sum_df16, sum_f16};
 
-    // Match the GPU's three passes and operation order, independently of its
-    // dispatch implementation. Comparing to a differently ordered CPU sum
-    // would mistake legitimate rounding differences for a shader defect.
+    // Match the GPU's operation order to distinguish shader errors from rounding differences.
     fn reference(values: &[u16], paired: bool) -> u32 {
         let sum = |values: Vec<u32>| {
             if paired {

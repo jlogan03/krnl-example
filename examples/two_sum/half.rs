@@ -28,8 +28,7 @@ fn cpu_sum(values: &[u16], threads: usize, paired: bool) -> u32 {
 }
 
 fn run(name: &str, source: &[f32], device: &Device) -> Result<CaseSummary> {
-    // Round once before any timing. All CPU/GPU types see the same quantized
-    // mathematical input, including the existing f32 TwoSum comparison.
+    // Quantize before timing so every variant sums the same values.
     let values: Vec<_> = source.iter().map(|&x| encode(x)).collect();
     let reference: f64 = values.iter().map(|&x| decode(x)).sum();
     let singles: Vec<_> = values.iter().map(|&x| decode(x) as f32).collect();
@@ -39,9 +38,9 @@ fn run(name: &str, source: &[f32], device: &Device) -> Result<CaseSummary> {
         values.len()
     );
     println!(
-        "  Plain f16 and Df16 use two banks per invocation; Df16 retains both output components."
+        "  f16 and Df16 use two accumulators per thread. Df16 retains both output components."
     );
-    println!("  CPU chunking and GPU interleaving differ; equal result bits are not assumed.");
+    println!("  CPU and GPU addition orders differ, so results may differ.");
     let start = Instant::now();
     let mut input = Buffer::<u16>::zeros(device.clone(), values.len())?;
     device.wait()?;
@@ -62,7 +61,7 @@ fn run(name: &str, source: &[f32], device: &Device) -> Result<CaseSummary> {
             Ok(())
         })?;
         let cpu_result = decode_pair(cpu_bits);
-        ensure!(cpu_result.is_finite(), "CPU {label} overflowed");
+        ensure!(cpu_result.is_finite(), "CPU {label} returned a nonfinite result");
         summary.record(label, format!("CPU {threads}"), cpu_result, cpu_time, None);
         println!(
             "  CPU {label}, {threads} Rayon chunks: result={cpu_result:.12e}, absolute error={:.9e}, mean={cpu_time:.3?}",
@@ -89,7 +88,7 @@ fn run(name: &str, source: &[f32], device: &Device) -> Result<CaseSummary> {
             device.wait()?;
             let download = start.elapsed();
             let result = decode_pair(bits);
-            ensure!(result.is_finite(), "GPU {label}/{policy} overflowed");
+            ensure!(result.is_finite(), "GPU {label}/{policy} returned a nonfinite result");
             if !fast_math {
                 strict_bits = bits;
             }
@@ -139,8 +138,7 @@ pub fn benchmark(
         device,
     )?);
 
-    // Normal half inputs and bounded totals. Large-value cancellation exposes
-    // lost increments without giving the half variants overflowing inputs.
+    // Use normal half values and bounded totals to expose rounding loss without overflow.
     let mut cancellation = vec![128.0f32; 8];
     cancellation.extend(std::iter::repeat_n(2f32.powi(-14), inputs - 16));
     cancellation.extend([-128.0f32; 8]);

@@ -27,7 +27,7 @@ use std::{
 const TIMING_RUNS: u32 = 20;
 const GPU_WARMUP: Duration = Duration::from_secs(3);
 
-// Match interpn: cache physical-core discovery, then cap it by the Rayon pool.
+// Cache the physical-core count to exclude discovery from timings.
 static PHYSICAL_CORES: LazyLock<usize> = LazyLock::new(num_cpus::get_physical);
 
 fn cpu_threads() -> usize {
@@ -46,7 +46,7 @@ fn cpu_compensated_sum(values: &[f32], threads: usize) -> f32 {
             acc.finish()
         })
         .collect();
-    // Merge in chunk order, retaining each residual until the final rounding.
+    // Merge in chunk order and retain residuals until the final rounding.
     let mut acc = TwoSum::<f32, 2>::new(0.0);
     for (sum, residual) in partials {
         acc.add(sum);
@@ -56,7 +56,7 @@ fn cpu_compensated_sum(values: &[f32], threads: usize) -> f32 {
     sum + residual
 }
 
-// Warm up once, then average complete runs. GPU callers wait inside the timer.
+// Average runs after one warm-up. GPU callers include completion waits.
 fn time_runs(mut run: impl FnMut() -> Result<()>) -> Result<Duration> {
     run()?;
     let start = Instant::now();
@@ -75,7 +75,7 @@ fn benchmark_parallel(
     summary: &mut CaseSummary,
 ) -> Result<f32> {
     println!(
-        "Parallel reduction: 8192 chunk threads -> 256 reduction threads -> one scalar, two banks/thread."
+        "GPU reduction: up to 8192 -> 256 -> 1 threads, two accumulators per thread."
     );
     println!("GPU warm-up per policy: {GPU_WARMUP:?} (excluded from timing).");
     let mut strict_result = 0.0_f32;
@@ -83,8 +83,7 @@ fn benchmark_parallel(
         let mut run = parallel_twosum(device.clone(), input.len(), fast_math)?;
         let mut output = Buffer::<f32>::zeros(device.clone(), 1)?;
         device.wait()?;
-        // A single dispatch does not warm the GPU enough for steady-state
-        // timings. Exercise this same procedure before starting the timer.
+        // Repeat the reduction to warm the GPU before timing.
         let warmup = Instant::now();
         while warmup.elapsed() < GPU_WARMUP {
             run(input.as_slice(), output.as_slice_mut())?;
@@ -104,8 +103,7 @@ fn benchmark_parallel(
         ensure!(result.is_finite(), "parallel {policy}: nonfinite result");
         if !fast_math {
             strict_result = result;
-            // These datasets should round to the f64 reference. This is a
-            // regression check, not an exactness guarantee for all inputs.
+            // These datasets should match the rounded reference. Other inputs may differ.
             ensure!(
                 result == reference as f32,
                 "parallel strict: result differs from rounded reference"
@@ -140,8 +138,8 @@ fn benchmark_parallel(
 fn run_case(name: &str, values: &[f32], device: &Device) -> Result<(f32, CaseSummary)> {
     println!("\n{name}: {} f32 values -> one f32 scalar", values.len());
 
-    // The CPU and GPU call the same deimos_numerics two-bank procedure.
-    // The f64 sum is a reference, not a claim that compensated f32 is error-free.
+    // Compare both implementations with an f64 reference.
+    // Compensated f32 arithmetic can still lose precision.
     let reference: f64 = values.iter().map(|&x| f64::from(x)).sum();
     let mut summary = CaseSummary::new(name, values.len(), reference);
     let threads = cpu_threads();
@@ -199,7 +197,7 @@ fn run_case(name: &str, values: &[f32], device: &Device) -> Result<(f32, CaseSum
     println!("  Input upload, reused buffer:        {upload_time:.3?}");
     println!("One-time setup:");
     println!("  Input allocation + initialization: {input_allocation_time:.3?}");
-    println!("GPU totals with transfers exclude allocation; CPU/GPU ratios >1 mean GPU faster.");
+    println!("GPU totals exclude allocation. CPU/GPU ratios above 1 mean the GPU is faster.");
     let strict = benchmark_parallel(
         &input,
         device,
@@ -218,9 +216,9 @@ fn main() -> Result<()> {
         .context("No Vulkan device found")?;
     ensure!(device.is_device(), "Expected a Vulkan device");
     println!("Using device: {device:?}");
-    println!("TwoSum and Df32: two-bank CPU and three-pass GPU reductions.");
+    println!("TwoSum and Df32: two accumulators per thread, three GPU passes.");
     println!(
-        "GPU timings use host wall time; dispatch excludes kernel creation and buffer allocation."
+        "GPU timings use host wall time and exclude kernel creation and buffer allocation."
     );
     if cfg!(debug_assertions) {
         println!("Use cargo run --release --example two_sum for performance comparisons.");
@@ -229,7 +227,7 @@ fn main() -> Result<()> {
     const INPUTS: usize = 10_000_000;
     const SEED: u64 = 42;
     let mut rng = StdRng::seed_from_u64(SEED);
-    // Normal values only: differences here cannot be explained by subnormals.
+    // Use normal values to isolate rounding loss from subnormal behavior.
     let random: Vec<f32> = (0..INPUTS)
         .map(|_| {
             let magnitude = rng.random_range(1.0_f32..1_000_000.0);
@@ -243,9 +241,8 @@ fn main() -> Result<()> {
         &device,
     )?;
 
-    // Large initial values hide small integer increments in plain f32 arithmetic.
-    // Cancel the large values at the end to expose the accumulated lost increments.
-    // The integer sum is exact in f64; the final f32 result may need rounding.
+    // Large values hide small increments in f32. Cancel them to expose the lost increments.
+    // The integer sum is exact in f64 but may need rounding to f32.
     let mut cancellation = vec![16_777_216.0_f32; 8];
     cancellation.extend((0..INPUTS - 16).map(|_| rng.random_range(1..4) as f32));
     cancellation.extend([-16_777_216.0; 8]);

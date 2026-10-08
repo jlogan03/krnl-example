@@ -1,4 +1,4 @@
-//! Df32 reductions with separate f32 high/residual buffers at every pass.
+//! Df32 reductions that retain high and residual components through every pass.
 use krnl::{
     anyhow::{Result, ensure},
     buffer::{Buffer, Slice, SliceMut},
@@ -13,13 +13,12 @@ mod kernels {
     use krnl_core::macros::kernel;
     use num_synth::Df32;
 
-    /// Two independent pair accumulators, merged once at the end. The host
-    /// and GPU share this sequence; input order is chosen by their callers.
+    /// Sum with two pair accumulators and merge them at the end.
+    /// The caller determines input order on both the CPU and GPU.
     #[inline]
     pub fn sum_df32(len: usize, mut value: impl FnMut(usize) -> Df32) -> Df32 {
         let (mut a, mut b) = (Df32::ZERO, Df32::ZERO);
-        // An indexed loop avoids Option<Df32>, whose eight-byte alignment
-        // makes rust-gpu emit an otherwise unnecessary 64-bit enum tag.
+        // Indexing avoids the 64-bit enum tag rust-gpu emits for Option<Df32>.
         for i in 0..len / 2 {
             a += value(2 * i);
             b += value(2 * i + 1);
@@ -70,7 +69,7 @@ mod kernels {
         };
     }
     reduction!(df32_first, df32_merge, df32_finish);
-    // Diagnostic comparison only: fast math can invalidate pair arithmetic.
+    // Fast math can invalidate pair arithmetic. Use it only for comparison.
     reduction!(
         df32_first_fast,
         df32_merge_fast,
@@ -83,8 +82,8 @@ pub use kernels::sum_df32;
 pub type ParallelDf32 =
     Box<dyn FnMut(Slice<'_, f32>, SliceMut<'_, f32>, SliceMut<'_, f32>) -> Result<()>>;
 
-/// Allocate scratch and pipelines for the same 8192 -> 256 -> 1 schedule
-/// as parallel_twosum. Both output slices must have one element.
+/// Allocate buffers and pipelines for up to 8192, 256, then 1 reduction threads.
+/// Each output slice must have one element.
 pub fn parallel_df32(device: Device, len: usize, fast_math: bool) -> Result<ParallelDf32> {
     ensure!(len > 0, "parallel reduction requires nonempty input");
     let partials = len.min(8192);
@@ -185,8 +184,7 @@ mod tests {
             );
             assert_eq!(f64::from(h) + f64::from(l), exact, "len={len}");
         }
-        // An uncanceled result requiring a nonzero residual must survive the
-        // final pass too, rather than being collapsed to a single f32.
+        // The final pass must retain the residual when the sum cannot fit in one f32.
         let input = Buffer::from(vec![16_777_216.0f32, 1.0]).into_device(device.clone())?;
         let mut hi = Buffer::<f32>::zeros(device.clone(), 1)?;
         let mut lo = Buffer::<f32>::zeros(device.clone(), 1)?;

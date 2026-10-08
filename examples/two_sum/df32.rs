@@ -26,14 +26,14 @@ pub fn benchmark(
     upload: std::time::Duration,
     summary: &mut CaseSummary,
 ) -> Result<()> {
-    println!("Df32: same f32 input, two pair banks per invocation, pair output retained.");
+    println!("Df32: same f32 inputs, two accumulators per thread, both output components retained.");
     let threads = cpu_threads();
     let mut cpu_result = Df32::ZERO;
     let cpu_time = time_runs(|| {
         cpu_result = black_box(cpu_sum(black_box(values), threads));
         Ok(())
     })?;
-    ensure!(cpu_result.is_finite(), "CPU Df32 overflowed");
+    ensure!(cpu_result.is_finite(), "CPU Df32 returned a nonfinite result");
     summary.record(
         "Df32",
         format!("CPU {threads}"),
@@ -67,10 +67,9 @@ pub fn benchmark(
         let (hi, lo) = (hi.into_vec()?[0], lo.into_vec()?[0]);
         device.wait()?;
         let download = start.elapsed();
-        // Report the raw returned sum even for fast math. Re-normalizing on
-        // the CPU could hide a shader's failure to preserve pair invariants.
+        // Sum the returned components in f64. Normalizing the pair could hide shader errors.
         let result = f64::from(hi) + f64::from(lo);
-        ensure!(result.is_finite(), "GPU Df32/{policy} overflowed");
+        ensure!(result.is_finite(), "GPU Df32/{policy} returned a nonfinite result");
         let bits = (hi.to_bits(), lo.to_bits());
         if !fast {
             strict_bits = bits;

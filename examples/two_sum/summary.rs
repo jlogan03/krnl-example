@@ -25,7 +25,7 @@ impl CaseSummary {
         }
     }
 
-    // Record existing measurements outside the timed regions.
+    // Record measurements after timing.
     pub fn record(
         &mut self,
         variant: &'static str,
@@ -50,8 +50,8 @@ pub fn print(cases: &[CaseSummary]) {
         super::TIMING_RUNS
     );
     println!("Compute: CPU reduction or GPU dispatch + wait. CPU N = N Rayon chunks.");
-    println!("GPU total: mean upload + compute + one readback; excludes allocation and setup.");
-    println!("Absolute errors are relative to each dataset's f64 reference.");
+    println!("GPU total: mean upload + compute + one download. Allocation and setup are excluded.");
+    println!("Absolute error: distance from the dataset's f64 reference.");
     for case in cases {
         println!(
             "\n{} ({} inputs; reference={:.12e})",

@@ -3,7 +3,7 @@ use krnl::{
 };
 
 
-/// Pretty-print device info including threads and numeric features.
+/// Print device limits and numeric features.
 pub fn print_device_capabilities(device: &Device) {
     if let Some(info) = device.info() {
         println!("{:#?}", info); 
@@ -12,7 +12,7 @@ pub fn print_device_capabilities(device: &Device) {
     }
 }
 
-/// Get a list of available devices.
+/// List available devices.
 pub fn available_devices() -> Vec<Device> {
     let mut devices = Vec::new();
     for index in 0usize.. {
@@ -32,7 +32,7 @@ pub fn available_devices() -> Vec<Device> {
     devices
 }
 
-/// Pretty-print info for each available device.
+/// Print each device's limits and numeric features.
 pub fn print_available_devices() {
     println!("Available devices:");
     let devices = available_devices();

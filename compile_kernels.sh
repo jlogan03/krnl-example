@@ -2,7 +2,7 @@
 
 set -eu
 
-# Resolve paths relative to this script, even when invoked from another directory.
+# Use the project directory regardless of the caller's working directory.
 cd "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 EXAMPLE_MANIFEST="$PWD/Cargo.toml"
 

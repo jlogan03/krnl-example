@@ -25,9 +25,7 @@ num_cpus = "1.17"
 features = ["half"]
 
 [package.metadata.krnlc.dependencies]
-# Pass pinned deps through to krnlc.
-# If we don't do this, it will crash because the auto-resolved versions
-# are too new.
+# Share these dependencies with krnlc to preserve compatible versions.
 half = {}
 libm = {}
 deimos_numerics = {}
