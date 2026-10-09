@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "half", feature(f16))]
+
 pub mod kernels;
 
 #[cfg(feature = "half")]

@@ -6,14 +6,13 @@ rust-version = "1.95"
 publish = false
 
 [features]
-half = ["dep:half", "dep:half-reduction"]
+half = ["dep:half", "num-synth/half"]
 
 [dependencies]
 half = { version = "=2.3.1", default-features = false, optional = true }
 libm = { version = "=0.2.8", default-features = false, optional = true }
 krnl = { git = "https://github.com/jlogan03/krnl", branch = "jlogan/update-deps" }
 num-synth = { git = "ssh://git@github.com/jlogan03/num-synth", branch = "main" }
-half-reduction = { path = "half-reduction", optional = true }
 deimos_numerics = { git = "https://github.com/deimoscontrols/deimos", branch = "main", default-features = false }
 
 [dev-dependencies]
@@ -29,8 +28,7 @@ features = ["half"]
 half = {}
 libm = {}
 deimos_numerics = {}
-half-reduction = {}
-num-synth = {}
+num-synth = { features = ["half"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [

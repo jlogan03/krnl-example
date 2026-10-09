@@ -70,7 +70,7 @@ requires a C++ compiler.
 rustup toolchain install nightly-2026-05-22 --profile minimal \
   --component rust-src,rustc-dev,llvm-tools
 cargo +nightly-2026-05-22 install --git https://github.com/jlogan03/krnl \
-  --branch jlogan/update-deps --locked krnlc
+  --branch jlogan/update-deps --locked --features half krnlc
 bash compile_kernels.sh
 ```
 

@@ -1,10 +1,9 @@
 use super::{CaseSummary, cpu_threads, run_case, time_gpu, time_runs, upload};
-use half_reduction::{
-    decode, decode_pair, encode, merge_twosum_f16, round_pair, sum_df16, sum_df16_scalars,
-    sum_twosum_f16,
-};
 use krnl::{anyhow::Result, buffer::Buffer, device::Device};
-use krnl_example::half_kernels::parallel_half;
+use krnl_example::half_kernels::{
+    decode, decode_pair, encode, merge_twosum_f16, parallel_half, round_pair, sum_df16,
+    sum_df16_scalars, sum_twosum_f16,
+};
 use rand::Rng;
 use rayon::prelude::*;
 use std::hint::black_box;

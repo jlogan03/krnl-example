@@ -1,5 +1,5 @@
 //! Half reductions use integer buffers to preserve component bits.
-//! The `half-reduction` crate performs arithmetic with Rust's primitive `f16` type.
+//! The arithmetic uses Rust's primitive `f16` type.
 use krnl::{
     anyhow::{Result, ensure},
     buffer::{Buffer, Slice, SliceMut},
@@ -12,6 +12,96 @@ mod kernels {
     #[cfg(not(target_arch = "spirv"))]
     use krnl::krnl_core;
     use krnl_core::macros::kernel;
+    use num_synth::Df16;
+
+    #[inline]
+    pub fn encode(value: f32) -> u16 {
+        (value as f16).to_bits()
+    }
+
+    #[inline]
+    pub fn decode(value: u16) -> f64 {
+        f16::from_bits(value) as f64
+    }
+
+    #[inline]
+    pub fn decode_pair(value: u32) -> f64 {
+        decode(value as u16) + decode((value >> 16) as u16)
+    }
+
+    // The low 16 bits hold the high component; the upper 16 bits hold the residual.
+    #[inline]
+    fn pack(hi: f16, lo: f16) -> u32 {
+        u32::from(hi.to_bits()) | (u32::from(lo.to_bits()) << 16)
+    }
+
+    #[inline]
+    pub fn round_pair(value: u32) -> u16 {
+        (f16::from_bits(value as u16) + f16::from_bits((value >> 16) as u16)).to_bits()
+    }
+
+    // Match deimos TwoSum's scalar update. Its num_traits::Float bound excludes primitive f16.
+    #[inline]
+    fn add(sum: &mut f16, residual: &mut f16, value: f16) {
+        let next = *sum + value;
+        let rounded = next - *sum;
+        *residual += (*sum - (next - rounded)) + (value - rounded);
+        *sum = next;
+    }
+
+    #[inline]
+    fn finish_twosum(mut a: f16, mut ar: f16, b: f16, br: f16) -> u32 {
+        add(&mut a, &mut ar, b);
+        add(&mut a, &mut ar, br);
+        pack(a, ar)
+    }
+
+    /// Sum with two compensated f16 accumulators and retain the residual.
+    #[inline]
+    pub fn sum_twosum_f16(mut values: impl Iterator<Item = u16>) -> u32 {
+        let (mut a, mut ar, mut b, mut br) = (0.0f16, 0.0f16, 0.0f16, 0.0f16);
+        while let Some(value) = values.next() {
+            add(&mut a, &mut ar, f16::from_bits(value));
+            if let Some(value) = values.next() {
+                add(&mut b, &mut br, f16::from_bits(value));
+            }
+        }
+        finish_twosum(a, ar, b, br)
+    }
+
+    #[inline]
+    pub fn merge_twosum_f16(values: impl Iterator<Item = u32>) -> u32 {
+        let (mut a, mut ar, mut b, mut br) = (0.0f16, 0.0f16, 0.0f16, 0.0f16);
+        for bits in values {
+            add(&mut a, &mut ar, f16::from_bits(bits as u16));
+            add(&mut b, &mut br, f16::from_bits((bits >> 16) as u16));
+        }
+        finish_twosum(a, ar, b, br)
+    }
+
+    #[inline]
+    pub fn sum_df16_scalars(values: impl Iterator<Item = u16>) -> u32 {
+        let mut sum = Df16::ZERO;
+        for bits in values {
+            sum += Df16::from_parts(f16::from_bits(bits), 0.0f16);
+        }
+        let (hi, lo) = sum.to_parts();
+        pack(hi, lo)
+    }
+
+    /// Add each packed pair to one Df16 accumulator in input order.
+    #[inline]
+    pub fn sum_df16(values: impl Iterator<Item = u32>) -> u32 {
+        let mut sum = Df16::ZERO;
+        for bits in values {
+            sum += Df16::from_parts(
+                f16::from_bits(bits as u16),
+                f16::from_bits((bits >> 16) as u16),
+            );
+        }
+        let (hi, lo) = sum.to_parts();
+        pack(hi, lo)
+    }
 
     macro_rules! reduction {
         ($first:ident, $middle:ident, $last:ident, $first_sum:ident, $sum:ident, $round:literal $(, $policy:ident)?) => {
@@ -21,7 +111,7 @@ mod kernels {
                 let remainder = values.len() % kernel.items();
                 let count = size + usize::from(kernel.item_id() < remainder);
                 let values = (0..count).map(|i| values[i * kernel.items() + kernel.item_id()]);
-                *partial = half_reduction::$first_sum(values);
+                *partial = $first_sum(values);
             }
 
             #[kernel($($policy)?)]
@@ -30,13 +120,13 @@ mod kernels {
                 let remainder = values.len() % kernel.items();
                 let start = kernel.item_id() * size + kernel.item_id().min(remainder);
                 let end = start + size + usize::from(kernel.item_id() < remainder);
-                *partial = half_reduction::$sum((start..end).map(|i| values[i]));
+                *partial = $sum((start..end).map(|i| values[i]));
             }
 
             #[kernel($($policy)?)]
             pub fn $last(#[global] values: Slice<u32>, #[item] result: &mut u32) {
-                let pair = half_reduction::$sum((0..values.len()).map(|i| values[i]));
-                *result = if $round { u32::from(half_reduction::round_pair(pair)) } else { pair };
+                let pair = $sum((0..values.len()).map(|i| values[i]));
+                *result = if $round { u32::from(round_pair(pair)) } else { pair };
             }
         };
     }
@@ -75,6 +165,11 @@ mod kernels {
         fast_math
     );
 }
+
+pub use kernels::{
+    decode, decode_pair, encode, merge_twosum_f16, round_pair, sum_df16, sum_df16_scalars,
+    sum_twosum_f16,
+};
 
 pub type ParallelHalf = Box<dyn FnMut(Slice<'_, u16>, SliceMut<'_, u32>) -> Result<()>>;
 
@@ -120,10 +215,6 @@ pub fn parallel_half(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use half_reduction::{
-        decode_pair, encode, merge_twosum_f16, round_pair, sum_df16, sum_df16_scalars,
-        sum_twosum_f16,
-    };
 
     // Match the GPU's operation order to distinguish shader errors from rounding differences.
     fn reference(values: &[u16], df16: bool) -> u32 {
@@ -187,11 +278,11 @@ mod tests {
                 device.wait()?;
                 let got = output.into_vec()?[0];
                 assert_eq!(got, expected, "len={len} df16={df16}");
-                let exact: f64 = values.iter().map(|&x| half_reduction::decode(x)).sum();
+                let exact: f64 = values.iter().map(|&x| decode(x)).sum();
                 let expected = if df16 {
                     exact
                 } else {
-                    half_reduction::decode(encode(exact as f32))
+                    decode(encode(exact as f32))
                 };
                 assert_eq!(decode_pair(got), expected, "len={len}");
             }
