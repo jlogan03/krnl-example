@@ -13,20 +13,15 @@ mod kernels {
     use krnl_core::macros::kernel;
     use num_synth::Df32;
 
-    /// Sum with two pair accumulators and merge them at the end.
-    /// The caller determines input order on both the CPU and GPU.
+    /// Add each value to one accumulator in the caller's input order.
     #[inline]
     pub fn sum_df32(len: usize, mut value: impl FnMut(usize) -> Df32) -> Df32 {
-        let (mut a, mut b) = (Df32::ZERO, Df32::ZERO);
+        let mut sum = Df32::ZERO;
         // Indexing avoids the 64-bit enum tag rust-gpu emits for Option<Df32>.
-        for i in 0..len / 2 {
-            a += value(2 * i);
-            b += value(2 * i + 1);
+        for i in 0..len {
+            sum += value(i);
         }
-        if !len.is_multiple_of(2) {
-            a += value(len - 1);
-        }
-        a + b
+        sum
     }
 
     macro_rules! reduction {

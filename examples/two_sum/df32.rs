@@ -1,13 +1,9 @@
-use super::{CaseSummary, GPU_WARMUP, cpu_threads, time_runs};
-use krnl::{
-    anyhow::{Result, ensure},
-    buffer::Buffer,
-    device::Device,
-};
+use super::{CaseSummary, cpu_threads, time_gpu, time_runs};
+use krnl::{anyhow::Result, buffer::Buffer, device::Device};
 use krnl_example::df32_kernels::{parallel_df32, sum_df32};
 use num_synth::Df32;
 use rayon::prelude::*;
-use std::{hint::black_box, time::Instant};
+use std::{hint::black_box, time::Duration};
 
 fn cpu_sum(values: &[f32], threads: usize) -> Df32 {
     let chunk_size = values.len().div_ceil(threads.max(1)).max(1);
@@ -22,78 +18,29 @@ pub fn benchmark(
     values: &[f32],
     input: &Buffer<f32>,
     device: &Device,
-    reference: f64,
-    upload: std::time::Duration,
+    upload: Duration,
     summary: &mut CaseSummary,
 ) -> Result<()> {
-    println!("Df32: same f32 inputs, two accumulators per thread, both output components retained.");
     let threads = cpu_threads();
-    let mut cpu_result = Df32::ZERO;
-    let cpu_time = time_runs(|| {
-        cpu_result = black_box(cpu_sum(black_box(values), threads));
-        Ok(())
-    })?;
-    ensure!(cpu_result.is_finite(), "CPU Df32 returned a nonfinite result");
-    summary.record(
-        "Df32",
-        format!("CPU {threads}"),
-        cpu_result.to_f64(),
-        cpu_time,
-        None,
-    );
-    println!(
-        "  CPU Df32, {threads} Rayon chunks: result={:.12e}, absolute error={:.9e}, mean={cpu_time:.3?}",
-        cpu_result.to_f64(),
-        (cpu_result.to_f64() - reference).abs()
-    );
-    let mut strict_bits = (0, 0);
+    let cpu = time_runs(|| Ok(cpu_sum(black_box(values), threads).to_f64()))?;
     for fast in [false, true] {
-        let policy = if fast { "fast" } else { "strict" };
         let mut run = parallel_df32(device.clone(), values.len(), fast)?;
         let mut hi = Buffer::<f32>::zeros(device.clone(), 1)?;
         let mut lo = Buffer::<f32>::zeros(device.clone(), 1)?;
-        device.wait()?;
-        let warmup = Instant::now();
-        while warmup.elapsed() < GPU_WARMUP {
-            run(input.as_slice(), hi.as_slice_mut(), lo.as_slice_mut())?;
-            device.wait()?;
-        }
-        let gpu_time = time_runs(|| {
-            run(input.as_slice(), hi.as_slice_mut(), lo.as_slice_mut())?;
-            device.wait()?;
-            Ok(())
+        let compute = time_gpu(device, || {
+            run(input.as_slice(), hi.as_slice_mut(), lo.as_slice_mut())
         })?;
-        let start = Instant::now();
-        let (hi, lo) = (hi.into_vec()?[0], lo.into_vec()?[0]);
-        device.wait()?;
-        let download = start.elapsed();
-        // Sum the returned components in f64. Normalizing the pair could hide shader errors.
-        let result = f64::from(hi) + f64::from(lo);
-        ensure!(result.is_finite(), "GPU Df32/{policy} returned a nonfinite result");
-        let bits = (hi.to_bits(), lo.to_bits());
-        if !fast {
-            strict_bits = bits;
-        }
-        let total = upload + gpu_time + download;
+        // Read both components without normalizing the pair, which could hide shader errors.
+        let (result, download) =
+            time_runs(|| Ok(f64::from(hi.to_vec()?[0]) + f64::from(lo.to_vec()?[0])))?;
         summary.record(
-            "Df32",
-            format!("GPU {policy}"),
-            result,
-            gpu_time,
-            Some(total),
-        );
-        println!(
-            "  GPU Df32/{policy}: result={result:.12e}, absolute error={:.9e}",
-            (result - reference).abs()
-        );
-        println!(
-            "    dispatch + wait={gpu_time:.3?}, pair download={download:.3?}, with transfers~{total:.3?}, CPU/GPU={:.2}x / {:.2}x",
-            cpu_time.as_secs_f64() / gpu_time.as_secs_f64(),
-            cpu_time.as_secs_f64() / total.as_secs_f64()
-        );
-        if fast {
-            println!("    differs from strict: {}", bits != strict_bits);
-        }
+            "Sequential Df32",
+            fast,
+            cpu,
+            (result, compute),
+            upload,
+            download,
+        )?;
     }
     Ok(())
 }

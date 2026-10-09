@@ -1,3 +1,4 @@
+use krnl::anyhow::{Result, ensure};
 use std::time::Duration;
 
 pub struct CaseSummary {
@@ -9,10 +10,11 @@ pub struct CaseSummary {
 
 struct Row {
     variant: &'static str,
-    execution: String,
-    result: f64,
-    compute: Duration,
-    total: Option<Duration>,
+    policy: &'static str,
+    cpu: (f64, Duration),
+    gpu: (f64, Duration),
+    upload: Duration,
+    download: Duration,
 }
 
 impl CaseSummary {
@@ -25,56 +27,58 @@ impl CaseSummary {
         }
     }
 
-    // Record measurements after timing.
     pub fn record(
         &mut self,
         variant: &'static str,
-        execution: String,
-        result: f64,
-        compute: Duration,
-        total: Option<Duration>,
-    ) {
+        fast: bool,
+        cpu: (f64, Duration),
+        gpu: (f64, Duration),
+        upload: Duration,
+        download: Duration,
+    ) -> Result<()> {
+        let policy = if fast { "fast" } else { "strict" };
+        ensure!(
+            cpu.0.is_finite(),
+            "CPU {variant} returned a nonfinite result"
+        );
+        ensure!(
+            gpu.0.is_finite(),
+            "GPU {variant}/{policy} returned a nonfinite result"
+        );
         self.rows.push(Row {
             variant,
-            execution,
-            result,
-            compute,
-            total,
+            policy,
+            cpu,
+            gpu,
+            upload,
+            download,
         });
+        Ok(())
     }
-}
 
-pub fn print(cases: &[CaseSummary]) {
-    println!(
-        "\nBenchmark summary (times in ms, mean of {} runs)",
-        super::TIMING_RUNS
-    );
-    println!("Compute: CPU reduction or GPU dispatch + wait. CPU N = N Rayon chunks.");
-    println!("GPU total: mean upload + compute + one download. Allocation and setup are excluded.");
-    println!("Absolute error: distance from the dataset's f64 reference.");
-    for case in cases {
+    pub fn print(&self) {
         println!(
             "\n{} ({} inputs; reference={:.12e})",
-            case.name, case.inputs, case.reference
+            self.name, self.inputs, self.reference
         );
         println!(
-            "| Variant | Execution  | Result             | Abs error | Compute ms | GPU total ms |"
+            "| Variant         | GPU math | CPU abs error | GPU abs error |     cpu ms | gpu upload ms | gpu compute ms | gpu download ms |"
         );
         println!(
-            "|---------|------------|--------------------|-----------|------------|--------------|"
+            "|-----------------|----------|---------------|---------------|------------|---------------|----------------|-----------------|"
         );
-        for row in &case.rows {
-            let total = row
-                .total
-                .map_or_else(|| "-".into(), |t| format!("{:.3}", t.as_secs_f64() * 1e3));
+        let ms = |time: Duration| time.as_secs_f64() * 1e3;
+        for row in &self.rows {
             println!(
-                "| {:<7} | {:<10} | {:>18.12e} | {:>9.3e} | {:>10.3} | {:>12} |",
+                "| {:<15} | {:<8} | {:>13.3e} | {:>13.3e} | {:>10.3} | {:>13.3} | {:>14.3} | {:>15.3} |",
                 row.variant,
-                row.execution,
-                row.result,
-                (row.result - case.reference).abs(),
-                row.compute.as_secs_f64() * 1e3,
-                total,
+                row.policy,
+                (row.cpu.0 - self.reference).abs(),
+                (row.gpu.0 - self.reference).abs(),
+                ms(row.cpu.1),
+                ms(row.upload),
+                ms(row.gpu.1),
+                ms(row.download),
             );
         }
     }

@@ -1,152 +1,82 @@
-use super::{CaseSummary, GPU_WARMUP, TIMING_RUNS, cpu_threads, run_case, time_runs};
-use half_reduction::{decode, decode_pair, encode, sum_df16, sum_f16};
-use krnl::{
-    anyhow::{Result, ensure},
-    buffer::{Buffer, Slice},
-    device::Device,
+use super::{CaseSummary, cpu_threads, run_case, time_gpu, time_runs, upload};
+use half_reduction::{
+    decode, decode_pair, encode, merge_twosum_f16, round_pair, sum_df16, sum_df16_scalars,
+    sum_twosum_f16,
 };
+use krnl::{anyhow::Result, buffer::Buffer, device::Device};
 use krnl_example::half_kernels::parallel_half;
 use rand::Rng;
 use rayon::prelude::*;
-use std::{hint::black_box, time::Instant};
+use std::hint::black_box;
 
-fn cpu_sum(values: &[u16], threads: usize, paired: bool) -> u32 {
+fn cpu_sum(values: &[u16], threads: usize, df16: bool) -> u32 {
     let size = values.len().div_ceil(threads.max(1)).max(1);
-    if paired {
-        let partials: Vec<_> = values
-            .par_chunks(size)
-            .map(|chunk| sum_df16(chunk.iter().map(|&x| u32::from(x))))
-            .collect();
+    let partials: Vec<_> = values
+        .par_chunks(size)
+        .map(|chunk| {
+            if df16 {
+                sum_df16_scalars(chunk.iter().copied())
+            } else {
+                sum_twosum_f16(chunk.iter().copied())
+            }
+        })
+        .collect();
+    if df16 {
         sum_df16(partials.into_iter())
     } else {
-        let partials: Vec<_> = values
-            .par_chunks(size)
-            .map(|chunk| sum_f16(chunk.iter().copied()))
-            .collect();
-        u32::from(sum_f16(partials.into_iter()))
+        u32::from(round_pair(merge_twosum_f16(partials.into_iter())))
     }
 }
 
 fn run(name: &str, source: &[f32], device: &Device) -> Result<CaseSummary> {
     // Quantize before timing so every variant sums the same values.
     let values: Vec<_> = source.iter().map(|&x| encode(x)).collect();
-    let reference: f64 = values.iter().map(|&x| decode(x)).sum();
     let singles: Vec<_> = values.iter().map(|&x| decode(x) as f32).collect();
-    let (_, mut summary) = run_case(name, &singles, device)?;
-    println!(
-        "Half variants: {} quantized f16 inputs; reference={reference:.12e}",
-        values.len()
-    );
-    println!(
-        "  f16 and Df16 use two accumulators per thread. Df16 retains both output components."
-    );
-    println!("  CPU and GPU addition orders differ, so results may differ.");
-    let start = Instant::now();
-    let mut input = Buffer::<u16>::zeros(device.clone(), values.len())?;
-    device.wait()?;
-    let allocation = start.elapsed();
-    let upload = time_runs(|| {
-        input.copy_from_slice(&Slice::from(values.as_slice()))?;
-        device.wait()?;
-        Ok(())
-    })?;
-    println!("  Half input allocation={allocation:.3?}; mean upload={upload:.3?}");
-
-    for paired in [false, true] {
-        let label = if paired { "Df16" } else { "f16" };
+    let mut summary = run_case(name, &singles, device)?;
+    let (input, upload) = upload(&values, device)?;
+    for df16 in [false, true] {
+        let label = if df16 {
+            "Sequential Df16"
+        } else {
+            "TwoSum f16"
+        };
         let threads = cpu_threads();
-        let mut cpu_bits = 0;
-        let cpu_time = time_runs(|| {
-            cpu_bits = black_box(cpu_sum(black_box(&values), threads, paired));
-            Ok(())
-        })?;
-        let cpu_result = decode_pair(cpu_bits);
-        ensure!(cpu_result.is_finite(), "CPU {label} returned a nonfinite result");
-        summary.record(label, format!("CPU {threads}"), cpu_result, cpu_time, None);
-        println!(
-            "  CPU {label}, {threads} Rayon chunks: result={cpu_result:.12e}, absolute error={:.9e}, mean={cpu_time:.3?}",
-            (cpu_result - reference).abs()
-        );
-        let mut strict_bits = 0;
-        for fast_math in [false, true] {
-            let policy = if fast_math { "fast" } else { "strict" };
-            let mut run = parallel_half(device.clone(), values.len(), paired, fast_math)?;
+        let cpu = time_runs(|| Ok(decode_pair(cpu_sum(black_box(&values), threads, df16))))?;
+        for fast in [false, true] {
+            let mut run = parallel_half(device.clone(), values.len(), df16, fast)?;
             let mut output = Buffer::<u32>::zeros(device.clone(), 1)?;
-            device.wait()?;
-            let start = Instant::now();
-            while start.elapsed() < GPU_WARMUP {
-                run(input.as_slice(), output.as_slice_mut())?;
-                device.wait()?;
-            }
-            let gpu_time = time_runs(|| {
-                run(input.as_slice(), output.as_slice_mut())?;
-                device.wait()?;
-                Ok(())
-            })?;
-            let start = Instant::now();
-            let bits = output.into_vec()?[0];
-            device.wait()?;
-            let download = start.elapsed();
-            let result = decode_pair(bits);
-            ensure!(result.is_finite(), "GPU {label}/{policy} returned a nonfinite result");
-            if !fast_math {
-                strict_bits = bits;
-            }
-            let total = upload + gpu_time + download;
-            summary.record(
-                label,
-                format!("GPU {policy}"),
-                result,
-                gpu_time,
-                Some(total),
-            );
-            println!(
-                "  GPU {label}/{policy}: result={result:.12e}, absolute error={:.9e}",
-                (result - reference).abs()
-            );
-            println!(
-                "    dispatch + wait={gpu_time:.3?}, download={download:.3?}, with transfers~{total:.3?}, CPU/GPU={:.2}x / {:.2}x",
-                cpu_time.as_secs_f64() / gpu_time.as_secs_f64(),
-                cpu_time.as_secs_f64() / total.as_secs_f64()
-            );
-            if fast_math {
-                println!("    differs from strict: {}", bits != strict_bits);
-            }
+            let compute = time_gpu(device, || run(input.as_slice(), output.as_slice_mut()))?;
+            let (result, download) = time_runs(|| Ok(decode_pair(output.to_vec()?[0])))?;
+            summary.record(label, fast, cpu, (result, compute), upload, download)?;
         }
     }
     Ok(summary)
 }
 
-pub fn benchmark(
-    inputs: usize,
-    rng: &mut impl Rng,
-    device: &Device,
-    summaries: &mut Vec<CaseSummary>,
-) -> Result<()> {
-    println!(
-        "\nHalf-range datasets; timings average {TIMING_RUNS} runs, warm-up {GPU_WARMUP:?}/policy."
-    );
+pub fn benchmark(inputs: usize, rng: &mut impl Rng, device: &Device) -> Result<()> {
     let random: Vec<f32> = (0..inputs)
         .map(|_| {
             let x = rng.random_range(0.0625f32..1.0);
             if rng.random() { x } else { -x }
         })
         .collect();
-    summaries.push(run(
+    run(
         "Quantized half random signed magnitudes [1/16, 1)",
         &random,
         device,
-    )?);
+    )?
+    .print();
 
     // Use normal half values and bounded totals to expose rounding loss without overflow.
     let mut cancellation = vec![128.0f32; 8];
     cancellation.extend(std::iter::repeat_n(2f32.powi(-14), inputs - 16));
     cancellation.extend([-128.0f32; 8]);
-    summaries.push(run(
+    run(
         "Quantized half small increments followed by cancellation",
         &cancellation,
         device,
-    )?);
+    )?
+    .print();
     Ok(())
 }
 
@@ -157,18 +87,29 @@ mod tests {
     #[test]
     fn cpu_half_reduction_tails_and_cancellation() {
         for threads in [1, 2, 3, 8] {
+            // Cover empty input, partial banks, and uneven chunks.
             for len in [0, 1, 7, 17, 1025] {
                 let mut values = vec![encode(1.0); len];
+                // At 2^12, f16 loses unit increments without compensation.
                 if len > 1 {
                     values[0] = encode(4096.0);
                     values[len - 1] = encode(-4096.0);
                 }
                 let exact: f64 = values.iter().map(|&x| decode(x)).sum();
-                assert_eq!(decode_pair(cpu_sum(&values, threads, true)), exact);
+                for df16 in [false, true] {
+                    assert_eq!(decode_pair(cpu_sum(&values, threads, df16)), exact);
+                }
             }
         }
         assert_eq!(decode_pair(cpu_sum(&[encode(1.0); 17], 3, false)), 17.0);
+        // Retain the smallest f16 subnormal (2^-24) under strict math.
         let tiny = [1u16; 17];
-        assert_eq!(decode_pair(cpu_sum(&tiny, 3, true)), 17.0 * 2f64.powi(-24));
+        for df16 in [false, true] {
+            assert_eq!(decode_pair(cpu_sum(&tiny, 3, df16)), 17.0 * 2f64.powi(-24));
+        }
+        // Keep the unit residual in partials before TwoSum rounds its final output.
+        let pair = sum_twosum_f16([encode(4096.0), encode(1.0)].into_iter());
+        assert_eq!(decode_pair(pair), 4097.0);
+        assert_eq!(decode(round_pair(pair)), 4096.0);
     }
 }
