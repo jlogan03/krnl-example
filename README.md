@@ -20,8 +20,8 @@ To include TwoSum with `f16` and sequential summation with `Df16`,
 use nightly Rust and a device with shader `f16` support:
 
 ```bash
-rustup toolchain install nightly-2026-05-22 --profile minimal
-cargo +nightly-2026-05-22 run --release --features half --example two_sum
+rustup toolchain install nightly-2026-08-15 --profile minimal
+cargo +nightly-2026-08-15 run --release --features half --example two_sum
 ```
 
 ## Read the results
@@ -38,7 +38,8 @@ all variants, including the `f64` reference.
 - Sequential sums use one accumulator per chunk or GPU thread.
   TwoSum uses two compensated accumulators.
 - Strict kernels use `rust_math`. Fast-math results show how optimizations can
-  break compensation. Different addition orders can produce different results
+  break compensation. Fast math assumes finite operands and results.
+  Different addition orders can produce different results
   even under strict math.
 
 Compensation improves accuracy but does not guarantee exact sums.
@@ -67,9 +68,9 @@ Install the matching compiler and its toolchain components. Building SPIRV-Tools
 requires a C++ compiler.
 
 ```bash
-rustup toolchain install nightly-2026-05-22 --profile minimal \
+rustup toolchain install nightly-2026-08-15 --profile minimal \
   --component rust-src,rustc-dev,llvm-tools
-cargo +nightly-2026-05-22 install --git https://github.com/jlogan03/krnl \
+cargo +nightly-2026-08-15 install --git https://github.com/jlogan03/krnl \
   --branch jlogan/update-deps --locked --features half krnlc
 bash compile_kernels.sh
 ```
@@ -83,7 +84,7 @@ These tests include GPU checks and require a supported device:
 
 ```bash
 cargo test --lib --example two_sum
-cargo +nightly-2026-05-22 test --features half --lib --example two_sum
+cargo +nightly-2026-08-15 test --features half --lib --example two_sum
 ```
 
 ## License

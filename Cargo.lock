@@ -256,9 +256,9 @@ dependencies = [
 
 [[package]]
 name = "glam"
-version = "0.33.6"
+version = "0.34.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21fef0953c54fd3de2f44b743fbf77e044c81a25faee03636dfccc0d35135e23"
+checksum = "fc148d4ddd3930c52f9e5ae79b89805c6f07e9ff417e7b083e0348cea60a5aba"
 dependencies = [
  "libm",
 ]
@@ -333,7 +333,7 @@ checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 [[package]]
 name = "krnl"
 version = "0.1.2-alpha"
-source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fupdate-deps#9310028c79c194fd80e2cc999aca4ed5d01ebac0"
+source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fupdate-deps#b49a5db0bec8ab55cf569e37d185d06bb71b0165"
 dependencies = [
  "anyhow",
  "ash",
@@ -359,7 +359,7 @@ dependencies = [
 [[package]]
 name = "krnl-core"
 version = "0.1.2-alpha"
-source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fupdate-deps#9310028c79c194fd80e2cc999aca4ed5d01ebac0"
+source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fupdate-deps#b49a5db0bec8ab55cf569e37d185d06bb71b0165"
 dependencies = [
  "bytemuck",
  "derive_more",
@@ -390,7 +390,7 @@ dependencies = [
 [[package]]
 name = "krnl-macros"
 version = "0.1.2-alpha"
-source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fupdate-deps#9310028c79c194fd80e2cc999aca4ed5d01ebac0"
+source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fupdate-deps#b49a5db0bec8ab55cf569e37d185d06bb71b0165"
 dependencies = [
  "bincode2",
  "bytemuck",
@@ -846,8 +846,8 @@ dependencies = [
 
 [[package]]
 name = "spirv-std"
-version = "0.10.0-alpha.1"
-source = "git+https://github.com/jlogan03/rust-gpu?branch=jlogan%2Ffloat-controls-intrinsics#a2735491fbe3f4e168fa3b09dcaa4a189dcb45b1"
+version = "0.11.0"
+source = "git+https://github.com/jlogan03/rust-gpu?branch=jlogan%2Ffloat-controls-intrinsics#75e61abe3bece5ff52ba025f8b339fc5a10c7b34"
 dependencies = [
  "bitflags",
  "glam",
@@ -859,8 +859,8 @@ dependencies = [
 
 [[package]]
 name = "spirv-std-macros"
-version = "0.10.0-alpha.1"
-source = "git+https://github.com/jlogan03/rust-gpu?branch=jlogan%2Ffloat-controls-intrinsics#a2735491fbe3f4e168fa3b09dcaa4a189dcb45b1"
+version = "0.11.0"
+source = "git+https://github.com/jlogan03/rust-gpu?branch=jlogan%2Ffloat-controls-intrinsics#75e61abe3bece5ff52ba025f8b339fc5a10c7b34"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -870,8 +870,8 @@ dependencies = [
 
 [[package]]
 name = "spirv-std-types"
-version = "0.10.0-alpha.1"
-source = "git+https://github.com/jlogan03/rust-gpu?branch=jlogan%2Ffloat-controls-intrinsics#a2735491fbe3f4e168fa3b09dcaa4a189dcb45b1"
+version = "0.11.0"
+source = "git+https://github.com/jlogan03/rust-gpu?branch=jlogan%2Ffloat-controls-intrinsics#75e61abe3bece5ff52ba025f8b339fc5a10c7b34"
 
 [[package]]
 name = "syn"
