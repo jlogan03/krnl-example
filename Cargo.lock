@@ -333,7 +333,7 @@ checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 [[package]]
 name = "krnl"
 version = "0.1.2-alpha"
-source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fupdate-deps#b49a5db0bec8ab55cf569e37d185d06bb71b0165"
+source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fupdate-deps#5b3cabff763f090f5ced9c521ad333561c8efd42"
 dependencies = [
  "anyhow",
  "ash",
@@ -359,7 +359,7 @@ dependencies = [
 [[package]]
 name = "krnl-core"
 version = "0.1.2-alpha"
-source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fupdate-deps#b49a5db0bec8ab55cf569e37d185d06bb71b0165"
+source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fupdate-deps#5b3cabff763f090f5ced9c521ad333561c8efd42"
 dependencies = [
  "bytemuck",
  "derive_more",
@@ -390,7 +390,7 @@ dependencies = [
 [[package]]
 name = "krnl-macros"
 version = "0.1.2-alpha"
-source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fupdate-deps#b49a5db0bec8ab55cf569e37d185d06bb71b0165"
+source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fupdate-deps#5b3cabff763f090f5ced9c521ad333561c8efd42"
 dependencies = [
  "bincode2",
  "bytemuck",
@@ -847,7 +847,7 @@ dependencies = [
 [[package]]
 name = "spirv-std"
 version = "0.11.0"
-source = "git+https://github.com/jlogan03/rust-gpu?branch=jlogan%2Ffloat-controls-intrinsics#75e61abe3bece5ff52ba025f8b339fc5a10c7b34"
+source = "git+https://github.com/jlogan03/rust-gpu?branch=jlogan%2Ffloat-controls-intrinsics#18e7d247363b7e5a8642b476ecfdca797d899291"
 dependencies = [
  "bitflags",
  "glam",
@@ -860,7 +860,7 @@ dependencies = [
 [[package]]
 name = "spirv-std-macros"
 version = "0.11.0"
-source = "git+https://github.com/jlogan03/rust-gpu?branch=jlogan%2Ffloat-controls-intrinsics#75e61abe3bece5ff52ba025f8b339fc5a10c7b34"
+source = "git+https://github.com/jlogan03/rust-gpu?branch=jlogan%2Ffloat-controls-intrinsics#18e7d247363b7e5a8642b476ecfdca797d899291"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -871,7 +871,7 @@ dependencies = [
 [[package]]
 name = "spirv-std-types"
 version = "0.11.0"
-source = "git+https://github.com/jlogan03/rust-gpu?branch=jlogan%2Ffloat-controls-intrinsics#75e61abe3bece5ff52ba025f8b339fc5a10c7b34"
+source = "git+https://github.com/jlogan03/rust-gpu?branch=jlogan%2Ffloat-controls-intrinsics#18e7d247363b7e5a8642b476ecfdca797d899291"
 
 [[package]]
 name = "syn"
