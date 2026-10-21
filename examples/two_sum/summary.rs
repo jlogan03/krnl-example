@@ -10,7 +10,6 @@ pub struct CaseSummary {
 
 struct Row {
     variant: &'static str,
-    policy: &'static str,
     cpu: (f64, Duration),
     gpu: (f64, Duration),
     upload: Duration,
@@ -30,24 +29,21 @@ impl CaseSummary {
     pub fn record(
         &mut self,
         variant: &'static str,
-        fast: bool,
         cpu: (f64, Duration),
         gpu: (f64, Duration),
         upload: Duration,
         download: Duration,
     ) -> Result<()> {
-        let policy = if fast { "fast" } else { "strict" };
         ensure!(
             cpu.0.is_finite(),
             "CPU {variant} returned a nonfinite result"
         );
         ensure!(
             gpu.0.is_finite(),
-            "GPU {variant}/{policy} returned a nonfinite result"
+            "GPU {variant} returned a nonfinite result"
         );
         self.rows.push(Row {
             variant,
-            policy,
             cpu,
             gpu,
             upload,
@@ -62,17 +58,16 @@ impl CaseSummary {
             self.name, self.inputs, self.reference
         );
         println!(
-            "| Variant         | GPU math | CPU abs error | GPU abs error |     cpu ms | gpu upload ms | gpu compute ms | gpu download ms |"
+            "| Variant         | CPU abs error | GPU abs error |     cpu ms | gpu upload ms | gpu compute ms | gpu download ms |"
         );
         println!(
-            "|-----------------|----------|---------------|---------------|------------|---------------|----------------|-----------------|"
+            "|-----------------|---------------|---------------|------------|---------------|----------------|-----------------|"
         );
         let ms = |time: Duration| time.as_secs_f64() * 1e3;
         for row in &self.rows {
             println!(
-                "| {:<15} | {:<8} | {:>13.3e} | {:>13.3e} | {:>10.3} | {:>13.3} | {:>14.3} | {:>15.3} |",
+                "| {:<15} | {:>13.3e} | {:>13.3e} | {:>10.3} | {:>13.3} | {:>14.3} | {:>15.3} |",
                 row.variant,
-                row.policy,
                 (row.cpu.0 - self.reference).abs(),
                 (row.gpu.0 - self.reference).abs(),
                 ms(row.cpu.1),

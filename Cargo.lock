@@ -333,7 +333,7 @@ checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 [[package]]
 name = "krnl"
 version = "0.1.2-alpha"
-source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fupdate-deps#5b3cabff763f090f5ced9c521ad333561c8efd42"
+source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fupdate-deps#53b2b75297acad277b3d07e49a452dd12e23aede"
 dependencies = [
  "anyhow",
  "ash",
@@ -359,7 +359,7 @@ dependencies = [
 [[package]]
 name = "krnl-core"
 version = "0.1.2-alpha"
-source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fupdate-deps#5b3cabff763f090f5ced9c521ad333561c8efd42"
+source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fupdate-deps#53b2b75297acad277b3d07e49a452dd12e23aede"
 dependencies = [
  "bytemuck",
  "derive_more",
@@ -390,7 +390,7 @@ dependencies = [
 [[package]]
 name = "krnl-macros"
 version = "0.1.2-alpha"
-source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fupdate-deps#5b3cabff763f090f5ced9c521ad333561c8efd42"
+source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fupdate-deps#53b2b75297acad277b3d07e49a452dd12e23aede"
 dependencies = [
  "bincode2",
  "bytemuck",

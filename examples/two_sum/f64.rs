@@ -18,20 +18,13 @@ pub fn benchmark(values: &[f32], device: &Device, summary: &mut CaseSummary) -> 
     let threads = cpu_threads();
     let cpu = time_runs(|| Ok(cpu_sum(black_box(&values), threads)))?;
     let (input, upload) = upload(&values, device)?;
-    for fast in [false, true] {
-        let mut run = parallel_f64(device.clone(), values.len(), fast)?;
-        let mut output = Buffer::<f64>::zeros(device.clone(), 1)?;
-        let compute = time_gpu(device, || run(input.as_slice(), output.as_slice_mut()))?;
-        let (result, download) = time_runs(|| Ok(output.to_vec()?[0]))?;
-        summary.record(
-            "Sequential f64",
-            fast,
-            cpu,
-            (result, compute),
-            upload,
-            download,
-        )?;
-    }
+
+    let mut run = parallel_f64(device.clone(), values.len())?;
+    let mut output = Buffer::<f64>::zeros(device.clone(), 1)?;
+    let compute = time_gpu(device, || run(input.as_slice(), output.as_slice_mut()))?;
+    let (result, download) = time_runs(|| Ok(output.to_vec()?[0]))?;
+    summary.record("Sequential f64", cpu, (result, compute), upload, download)?;
+
     Ok(())
 }
 

@@ -107,20 +107,20 @@ fn run_case(name: &str, values: &[f32], device: &Device) -> Result<CaseSummary> 
         "CPU TwoSum differs from rounded reference"
     );
     let (input, upload) = upload(values, device)?;
-    for fast in [false, true] {
-        let mut run = parallel_twosum(device.clone(), values.len(), fast)?;
-        let mut output = Buffer::<f32>::zeros(device.clone(), 1)?;
-        let compute = time_gpu(device, || run(input.as_slice(), output.as_slice_mut()))?;
-        let (result, download) = time_runs(|| Ok(f64::from(output.to_vec()?[0])))?;
-        if !fast {
-            // These datasets should match the rounded reference. Other inputs may differ.
-            ensure!(
-                result == f64::from(reference as f32),
-                "GPU TwoSum differs from rounded reference"
-            );
-        }
-        summary.record("TwoSum f32", fast, cpu, (result, compute), upload, download)?;
-    }
+
+    let mut run = parallel_twosum(device.clone(), values.len())?;
+    let mut output = Buffer::<f32>::zeros(device.clone(), 1)?;
+    let compute = time_gpu(device, || run(input.as_slice(), output.as_slice_mut()))?;
+    let (result, download) = time_runs(|| Ok(f64::from(output.to_vec()?[0])))?;
+
+    // These datasets should match the rounded reference. Other inputs may differ.
+    ensure!(
+        result == f64::from(reference as f32),
+        "GPU TwoSum differs from rounded reference"
+    );
+
+    summary.record("TwoSum f32", cpu, (result, compute), upload, download)?;
+
     f64_bench::benchmark(values, device, &mut summary)?;
     df32_bench::benchmark(values, &input, device, upload, &mut summary)?;
     Ok(summary)

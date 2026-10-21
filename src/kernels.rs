@@ -46,70 +46,59 @@ mod kernels {
         acc.finish()
     }
 
-    // Both policies use three passes. Each item owns its output.
+    // Each item owns its output through three passes.
     // No pass needs shared memory, barriers, or unsafe indexing.
-    macro_rules! parallel_kernels {
-        ($first:ident, $middle:ident, $last:ident $(, $policy:ident)?) => {
-            #[kernel($($policy)?)]
-            pub fn $first(
-                #[global] values: Slice<f32>,
-                #[item] sum: &mut f32,
-                #[item] residual: &mut f32,
-            ) {
-                // Neighboring threads read neighboring elements so memory requests can coalesce.
-                // Distribute the tail so each input is read once.
-                let size = values.len() / kernel.items();
-                let remainder = values.len() % kernel.items();
-                let count = size + usize::from(kernel.item_id() < remainder);
-                let chunk = (0..count).map(|i| values[i * kernel.items() + kernel.item_id()]);
-                (*sum, *residual) = local_sum(chunk);
-            }
 
-            #[kernel($($policy)?)]
-            pub fn $middle(
-                #[global] sums: Slice<f32>,
-                #[global] residuals: Slice<f32>,
-                #[item] sum: &mut f32,
-                #[item] residual: &mut f32,
-            ) {
-                // Merge partial pairs and retain both components for the final pass.
-                let size = sums.len() / kernel.items();
-                let remainder = sums.len() % kernel.items();
-                let start = kernel.item_id() * size + kernel.item_id().min(remainder);
-                let end = start + size + usize::from(kernel.item_id() < remainder);
-                let mut acc = deimos_numerics::twosum::TwoSum::<f32, 2>::new(0.0);
-                for i in start..end {
-                    acc.add(sums[i]);
-                    acc.add(residuals[i]);
-                }
-                (*sum, *residual) = acc.finish();
-            }
-
-            #[kernel($($policy)?)]
-            pub fn $last(
-                #[global] sums: Slice<f32>,
-                #[global] residuals: Slice<f32>,
-                #[item] result: &mut f32,
-            ) {
-                // Merge all partial pairs before rounding to preserve compensation.
-                let mut acc = deimos_numerics::twosum::TwoSum::<f32, 2>::new(0.0);
-                for i in 0..sums.len() {
-                    acc.add(sums[i]);
-                    acc.add(residuals[i]);
-                }
-                let (sum, residual) = acc.finish();
-                *result = sum + residual;
-            }
-        };
+    #[kernel]
+    pub fn twosum_parallel(
+        #[global] values: Slice<f32>,
+        #[item] sum: &mut f32,
+        #[item] residual: &mut f32,
+    ) {
+        // Neighboring threads read neighboring elements so memory requests can coalesce.
+        // Distribute the tail so each input is read once.
+        let size = values.len() / kernel.items();
+        let remainder = values.len() % kernel.items();
+        let count = size + usize::from(kernel.item_id() < remainder);
+        let chunk = (0..count).map(|i| values[i * kernel.items() + kernel.item_id()]);
+        (*sum, *residual) = local_sum(chunk);
     }
-    parallel_kernels!(twosum_parallel, twosum_merge, twosum_finish);
-    // Fast-math may reorder compensation arithmetic and flush subnormals.
-    parallel_kernels!(
-        twosum_parallel_incorrect,
-        twosum_merge_incorrect,
-        twosum_finish_incorrect,
-        fast_math
-    );
+
+    #[kernel]
+    pub fn twosum_merge(
+        #[global] sums: Slice<f32>,
+        #[global] residuals: Slice<f32>,
+        #[item] sum: &mut f32,
+        #[item] residual: &mut f32,
+    ) {
+        // Merge partial pairs and retain both components for the final pass.
+        let size = sums.len() / kernel.items();
+        let remainder = sums.len() % kernel.items();
+        let start = kernel.item_id() * size + kernel.item_id().min(remainder);
+        let end = start + size + usize::from(kernel.item_id() < remainder);
+        let mut acc = deimos_numerics::twosum::TwoSum::<f32, 2>::new(0.0);
+        for i in start..end {
+            acc.add(sums[i]);
+            acc.add(residuals[i]);
+        }
+        (*sum, *residual) = acc.finish();
+    }
+
+    #[kernel]
+    pub fn twosum_finish(
+        #[global] sums: Slice<f32>,
+        #[global] residuals: Slice<f32>,
+        #[item] result: &mut f32,
+    ) {
+        // Merge all partial pairs before rounding to preserve compensation.
+        let mut acc = deimos_numerics::twosum::TwoSum::<f32, 2>::new(0.0);
+        for i in 0..sums.len() {
+            acc.add(sums[i]);
+            acc.add(residuals[i]);
+        }
+        let (sum, residual) = acc.finish();
+        *result = sum + residual;
+    }
 
     #[kernel]
     pub fn fma_strict(
@@ -132,11 +121,7 @@ pub type ParallelTwoSum = Box<dyn FnMut(Slice<'_, f32>, SliceMut<'_, f32>) -> Re
 
 /// Allocate buffers and pipelines for a reduction with two accumulators per invocation.
 /// The caller supplies an output buffer with one element.
-pub fn parallel_twosum(
-    device: krnl::device::Device,
-    len: usize,
-    fast_math: bool,
-) -> Result<ParallelTwoSum> {
+pub fn parallel_twosum(device: krnl::device::Device, len: usize) -> Result<ParallelTwoSum> {
     use krnl::{anyhow::ensure, buffer::Buffer};
     ensure!(len > 0, "parallel reduction requires nonempty input");
     const THREADS: usize = 8192;
@@ -151,43 +136,31 @@ pub fn parallel_twosum(
     let mut reduced_residuals = Buffer::<f32>::zeros(device.clone(), reduced)?;
 
     // Keep scratch buffers and all three pipelines outside the timed dispatches.
-    macro_rules! build_runner {
-        ($first:ident, $middle:ident, $last:ident) => {{
-            let first = kernels::$first::builder()?.build(device.clone())?;
-            let middle = kernels::$middle::builder()?.build(device.clone())?;
-            let last = kernels::$last::builder()?
-                .with_threads(1)
-                .build(device.clone())?;
-            Box::new(move |input: Slice<'_, f32>, output: SliceMut<'_, f32>| {
-                ensure!(
-                    input.len() == len && output.len() == 1,
-                    "reduction buffer lengths changed"
-                );
-                first.dispatch(input, sums.as_slice_mut(), residuals.as_slice_mut())?;
-                middle.dispatch(
-                    sums.as_slice(),
-                    residuals.as_slice(),
-                    reduced_sums.as_slice_mut(),
-                    reduced_residuals.as_slice_mut(),
-                )?;
-                last.dispatch(
-                    reduced_sums.as_slice(),
-                    reduced_residuals.as_slice(),
-                    output,
-                )
-            }) as ParallelTwoSum
-        }};
-    }
-    let run = if fast_math {
-        build_runner!(
-            twosum_parallel_incorrect,
-            twosum_merge_incorrect,
-            twosum_finish_incorrect
-        )
-    } else {
-        build_runner!(twosum_parallel, twosum_merge, twosum_finish)
-    };
-    Ok(run)
+    let first = kernels::twosum_parallel::builder()?.build(device.clone())?;
+    let middle = kernels::twosum_merge::builder()?.build(device.clone())?;
+    let last = kernels::twosum_finish::builder()?
+        .with_threads(1)
+        .build(device.clone())?;
+    Ok(Box::new(
+        move |input: Slice<'_, f32>, output: SliceMut<'_, f32>| {
+            ensure!(
+                input.len() == len && output.len() == 1,
+                "reduction buffer lengths changed"
+            );
+            first.dispatch(input, sums.as_slice_mut(), residuals.as_slice_mut())?;
+            middle.dispatch(
+                sums.as_slice(),
+                residuals.as_slice(),
+                reduced_sums.as_slice_mut(),
+                reduced_residuals.as_slice_mut(),
+            )?;
+            last.dispatch(
+                reduced_sums.as_slice(),
+                reduced_residuals.as_slice(),
+                output,
+            )
+        },
+    ))
 }
 
 /// Run `y = a*x + b` for slice inputs on a compute device.
@@ -224,23 +197,20 @@ mod tests {
             let expected: f64 = values.iter().map(|&x| f64::from(x)).sum();
             let input = Buffer::from(values).into_device(device.clone())?;
             let mut output = Buffer::<f32>::zeros(device.clone(), 1)?;
-            let mut run = super::parallel_twosum(device.clone(), len, false)?;
+            let mut run = super::parallel_twosum(device.clone(), len)?;
             run(input.as_slice(), output.as_slice_mut())?;
             device.wait()?;
             assert_eq!(f64::from(output.into_vec()?[0]), expected, "len={len}");
         }
         // All three stages must retain subnormals under the strict policy.
         let input = Buffer::from(vec![f32::from_bits(1); 513]).into_device(device.clone())?;
-        for fast_math in [false, true] {
-            let mut output = Buffer::<f32>::zeros(device.clone(), 1)?;
-            let mut run = super::parallel_twosum(device.clone(), 513, fast_math)?;
-            run(input.as_slice(), output.as_slice_mut())?;
-            device.wait()?;
-            assert_eq!(
-                output.into_vec()?[0].to_bits(),
-                if fast_math { 0 } else { 513 }
-            );
-        }
+
+        let mut output = Buffer::<f32>::zeros(device.clone(), 1)?;
+        let mut run = super::parallel_twosum(device.clone(), 513)?;
+        run(input.as_slice(), output.as_slice_mut())?;
+        device.wait()?;
+        assert_eq!(output.into_vec()?[0].to_bits(), 513);
+
         Ok(())
     }
 
@@ -262,19 +232,12 @@ mod tests {
             assert_eq!(kernels::compensated_sum(values.iter().copied()), expected);
             let input = Buffer::from(values).into_device(device.clone())?;
             let mut output = Buffer::<f32>::zeros(device.clone(), 1)?;
-            let mut run = super::parallel_twosum(device.clone(), input.len(), false)?;
+            let mut run = super::parallel_twosum(device.clone(), input.len())?;
             run(input.as_slice(), output.as_slice_mut())?;
             device.wait()?;
             assert_eq!(output.into_vec()?[0].to_bits(), expected.to_bits());
         }
 
-        // Fast-math flushes subnormals; other permitted changes depend on the driver.
-        let input = Buffer::from(vec![f32::from_bits(1); 2]).into_device(device.clone())?;
-        let mut output = Buffer::<f32>::zeros(device.clone(), 1)?;
-        let mut run = super::parallel_twosum(device.clone(), input.len(), true)?;
-        run(input.as_slice(), output.as_slice_mut())?;
-        device.wait()?;
-        assert_eq!(output.into_vec()?, vec![0.0]);
         Ok(())
     }
 

@@ -41,13 +41,12 @@ fn run(name: &str, source: &[f32], device: &Device) -> Result<CaseSummary> {
         };
         let threads = cpu_threads();
         let cpu = time_runs(|| Ok(decode_pair(cpu_sum(black_box(&values), threads, df16))))?;
-        for fast in [false, true] {
-            let mut run = parallel_half(device.clone(), values.len(), df16, fast)?;
-            let mut output = Buffer::<u32>::zeros(device.clone(), 1)?;
-            let compute = time_gpu(device, || run(input.as_slice(), output.as_slice_mut()))?;
-            let (result, download) = time_runs(|| Ok(decode_pair(output.to_vec()?[0])))?;
-            summary.record(label, fast, cpu, (result, compute), upload, download)?;
-        }
+
+        let mut run = parallel_half(device.clone(), values.len(), df16)?;
+        let mut output = Buffer::<u32>::zeros(device.clone(), 1)?;
+        let compute = time_gpu(device, || run(input.as_slice(), output.as_slice_mut()))?;
+        let (result, download) = time_runs(|| Ok(decode_pair(output.to_vec()?[0])))?;
+        summary.record(label, cpu, (result, compute), upload, download)?;
     }
     Ok(summary)
 }

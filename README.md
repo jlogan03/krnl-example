@@ -6,8 +6,9 @@ a basic `y = a*x + b` kernel and CPU/GPU reduction benchmarks.
 ## Run
 
 Requires Rust 1.95+ and a Vulkan 1.2 device with `shaderFloatControls2`.
-Strict kernels also require subnormal preservation and round-to-nearest/ties-to-even
-for their float types. Both examples use `f64`.
+Outside macOS, kernels also require subnormal preservation and round-to-nearest/ties-to-even
+for their float types. On macOS, krnl uses device defaults for unsupported modes.
+Both examples use `f64`.
 
 ```bash
 cargo run
@@ -37,17 +38,15 @@ all variants, including the `f64` reference.
   final result to `f16` or `f32`; Df32 and Df16 return both components.
 - Sequential sums use one accumulator per chunk or GPU thread.
   TwoSum uses two compensated accumulators.
-- Strict kernels use `rust_math`. Fast-math results show how optimizations can
-  break compensation. Fast math assumes finite operands and results.
-  Different addition orders can produce different results
-  even under strict math.
+- Kernels use `rust_math`, with platform adjustments made by krnl.
+  Different addition orders can produce different results.
 
 Compensation improves accuracy but does not guarantee exact sums.
 Tables report CPU and GPU absolute errors against the `f64` reference, plus
 CPU, GPU upload, GPU compute, and GPU download times.
 
 All times average 20 runs. Each GPU variant warms up for three
-seconds per policy. GPU compute includes all dispatches and waiting for completion.
+seconds. GPU compute includes all dispatches and waiting for completion.
 Transfers use buffers of `f16`, `f32`, or `f64` inputs; double-float kernels construct
 pairs on the GPU. Downloads include both components of double-float results.
 Timings exclude device allocation, pipeline creation, input preparation, and warm-up.

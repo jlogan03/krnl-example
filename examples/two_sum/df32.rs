@@ -23,25 +23,18 @@ pub fn benchmark(
 ) -> Result<()> {
     let threads = cpu_threads();
     let cpu = time_runs(|| Ok(cpu_sum(black_box(values), threads).to_f64()))?;
-    for fast in [false, true] {
-        let mut run = parallel_df32(device.clone(), values.len(), fast)?;
-        let mut hi = Buffer::<f32>::zeros(device.clone(), 1)?;
-        let mut lo = Buffer::<f32>::zeros(device.clone(), 1)?;
-        let compute = time_gpu(device, || {
-            run(input.as_slice(), hi.as_slice_mut(), lo.as_slice_mut())
-        })?;
-        // Read both components without normalizing the pair, which could hide shader errors.
-        let (result, download) =
-            time_runs(|| Ok(f64::from(hi.to_vec()?[0]) + f64::from(lo.to_vec()?[0])))?;
-        summary.record(
-            "Sequential Df32",
-            fast,
-            cpu,
-            (result, compute),
-            upload,
-            download,
-        )?;
-    }
+
+    let mut run = parallel_df32(device.clone(), values.len())?;
+    let mut hi = Buffer::<f32>::zeros(device.clone(), 1)?;
+    let mut lo = Buffer::<f32>::zeros(device.clone(), 1)?;
+    let compute = time_gpu(device, || {
+        run(input.as_slice(), hi.as_slice_mut(), lo.as_slice_mut())
+    })?;
+    // Read both components without normalizing the pair, which could hide shader errors.
+    let (result, download) =
+        time_runs(|| Ok(f64::from(hi.to_vec()?[0]) + f64::from(lo.to_vec()?[0])))?;
+    summary.record("Sequential Df32", cpu, (result, compute), upload, download)?;
+
     Ok(())
 }
 

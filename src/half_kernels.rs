@@ -104,8 +104,8 @@ mod kernels {
     }
 
     macro_rules! reduction {
-        ($first:ident, $middle:ident, $last:ident, $first_sum:ident, $sum:ident, $round:literal $(, $policy:ident)?) => {
-            #[kernel($($policy)?)]
+        ($first:ident, $middle:ident, $last:ident, $first_sum:ident, $sum:ident, $round:literal) => {
+            #[kernel]
             pub fn $first(#[global] values: Slice<u16>, #[item] partial: &mut u32) {
                 let size = values.len() / kernel.items();
                 let remainder = values.len() % kernel.items();
@@ -114,7 +114,7 @@ mod kernels {
                 *partial = $first_sum(values);
             }
 
-            #[kernel($($policy)?)]
+            #[kernel]
             pub fn $middle(#[global] values: Slice<u32>, #[item] partial: &mut u32) {
                 let size = values.len() / kernel.items();
                 let remainder = values.len() % kernel.items();
@@ -123,10 +123,14 @@ mod kernels {
                 *partial = $sum((start..end).map(|i| values[i]));
             }
 
-            #[kernel($($policy)?)]
+            #[kernel]
             pub fn $last(#[global] values: Slice<u32>, #[item] result: &mut u32) {
                 let pair = $sum((0..values.len()).map(|i| values[i]));
-                *result = if $round { u32::from(round_pair(pair)) } else { pair };
+                *result = if $round {
+                    u32::from(round_pair(pair))
+                } else {
+                    pair
+                };
             }
         };
     }
@@ -146,24 +150,6 @@ mod kernels {
         sum_df16,
         false
     );
-    reduction!(
-        f16_first_fast,
-        f16_merge_fast,
-        f16_finish_fast,
-        sum_twosum_f16,
-        merge_twosum_f16,
-        true,
-        fast_math
-    );
-    reduction!(
-        df16_first_fast,
-        df16_merge_fast,
-        df16_finish_fast,
-        sum_df16_scalars,
-        sum_df16,
-        false,
-        fast_math
-    );
 }
 
 pub use kernels::{
@@ -175,12 +161,7 @@ pub type ParallelHalf = Box<dyn FnMut(Slice<'_, u16>, SliceMut<'_, u32>) -> Resu
 
 /// Reduce with up to 8192, 256, then 1 threads. Retain residuals through every pass.
 /// Df16 returns both components; TwoSum rounds the final result to f16.
-pub fn parallel_half(
-    device: Device,
-    len: usize,
-    df16: bool,
-    fast_math: bool,
-) -> Result<ParallelHalf> {
+pub fn parallel_half(device: Device, len: usize, df16: bool) -> Result<ParallelHalf> {
     ensure!(len > 0, "parallel reduction requires nonempty input");
     let partials = len.min(8192);
     let reduced = partials.min(256);
@@ -204,11 +185,9 @@ pub fn parallel_half(
             }) as ParallelHalf
         }};
     }
-    Ok(match (df16, fast_math) {
-        (false, false) => runner!(f16_first, f16_merge, f16_finish),
-        (false, true) => runner!(f16_first_fast, f16_merge_fast, f16_finish_fast),
-        (true, false) => runner!(df16_first, df16_merge, df16_finish),
-        (true, true) => runner!(df16_first_fast, df16_merge_fast, df16_finish_fast),
+    Ok(match df16 {
+        false => runner!(f16_first, f16_merge, f16_finish),
+        true => runner!(df16_first, df16_merge, df16_finish),
     })
 }
 
@@ -271,10 +250,7 @@ mod tests {
             for df16 in [false, true] {
                 let expected = reference(&values, df16);
                 let mut output = Buffer::<u32>::zeros(device.clone(), 1)?;
-                parallel_half(device.clone(), len, df16, false)?(
-                    input.as_slice(),
-                    output.as_slice_mut(),
-                )?;
+                parallel_half(device.clone(), len, df16)?(input.as_slice(), output.as_slice_mut())?;
                 device.wait()?;
                 let got = output.into_vec()?[0];
                 assert_eq!(got, expected, "len={len} df16={df16}");
@@ -291,21 +267,16 @@ mod tests {
     }
 
     #[test]
-    fn gpu_half_subnormal_policy() -> Result<()> {
+    fn gpu_half_preserves_subnormals() -> Result<()> {
         let device = Device::builder().build()?;
         // Each input is the smallest f16 subnormal: 2^-24.
         let input = Buffer::from(vec![1u16; 513]).into_device(device.clone())?;
         for df16 in [false, true] {
-            for fast in [false, true] {
-                let mut output = Buffer::<u32>::zeros(device.clone(), 1)?;
-                parallel_half(device.clone(), 513, df16, fast)?(
-                    input.as_slice(),
-                    output.as_slice_mut(),
-                )?;
-                device.wait()?;
-                let got = decode_pair(output.into_vec()?[0]);
-                assert_eq!(got, if fast { 0.0 } else { 513.0 * 2f64.powi(-24) });
-            }
+            let mut output = Buffer::<u32>::zeros(device.clone(), 1)?;
+            parallel_half(device.clone(), 513, df16)?(input.as_slice(), output.as_slice_mut())?;
+            device.wait()?;
+            let got = decode_pair(output.into_vec()?[0]);
+            assert_eq!(got, 513.0 * 2f64.powi(-24));
         }
         Ok(())
     }
