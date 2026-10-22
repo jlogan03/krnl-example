@@ -60,8 +60,12 @@ mod kernels {
         let size = values.len() / kernel.items();
         let remainder = values.len() % kernel.items();
         let count = size + usize::from(kernel.item_id() < remainder);
-        let chunk = (0..count).map(|i| values[i * kernel.items() + kernel.item_id()]);
-        (*sum, *residual) = local_sum(chunk);
+        // Avoid iterator captures that rust-gpu can leave as illegal pointer composites.
+        let mut acc = deimos_numerics::twosum::TwoSum::<f32, 2>::new(0.0);
+        for i in 0..count {
+            acc.add(values[i * kernel.items() + kernel.item_id()]);
+        }
+        (*sum, *residual) = acc.finish();
     }
 
     #[kernel]

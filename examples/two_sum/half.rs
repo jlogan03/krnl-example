@@ -14,16 +14,16 @@ fn cpu_sum(values: &[u16], threads: usize, df16: bool) -> u32 {
         .par_chunks(size)
         .map(|chunk| {
             if df16 {
-                sum_df16_scalars(chunk.iter().copied())
+                sum_df16_scalars(0..chunk.len(), |i| chunk[i])
             } else {
-                sum_twosum_f16(chunk.iter().copied())
+                sum_twosum_f16(0..chunk.len(), |i| chunk[i])
             }
         })
         .collect();
     if df16 {
-        sum_df16(partials.into_iter())
+        sum_df16(0..partials.len(), |i| partials[i])
     } else {
-        u32::from(round_pair(merge_twosum_f16(partials.into_iter())))
+        u32::from(round_pair(merge_twosum_f16(0..partials.len(), |i| partials[i])))
     }
 }
 
@@ -106,7 +106,8 @@ mod tests {
             assert_eq!(decode_pair(cpu_sum(&tiny, 3, df16)), 17.0 * 2f64.powi(-24));
         }
         // Keep the unit residual in partials before TwoSum rounds its final output.
-        let pair = sum_twosum_f16([encode(4096.0), encode(1.0)].into_iter());
+        let values = [encode(4096.0), encode(1.0)];
+        let pair = sum_twosum_f16(0..values.len(), |i| values[i]);
         assert_eq!(decode_pair(pair), 4097.0);
         assert_eq!(decode(round_pair(pair)), 4096.0);
     }

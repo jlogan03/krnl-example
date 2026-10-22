@@ -58,21 +58,25 @@ mod kernels {
 
     /// Sum with two compensated f16 accumulators and retain the residual.
     #[inline]
-    pub fn sum_twosum_f16(mut values: impl Iterator<Item = u16>) -> u32 {
+    pub fn sum_twosum_f16(
+        mut indices: impl Iterator<Item = usize>,
+        value: impl Fn(usize) -> u16,
+    ) -> u32 {
         let (mut a, mut ar, mut b, mut br) = (0.0f16, 0.0f16, 0.0f16, 0.0f16);
-        while let Some(value) = values.next() {
-            add(&mut a, &mut ar, f16::from_bits(value));
-            if let Some(value) = values.next() {
-                add(&mut b, &mut br, f16::from_bits(value));
+        while let Some(i) = indices.next() {
+            add(&mut a, &mut ar, f16::from_bits(value(i)));
+            if let Some(i) = indices.next() {
+                add(&mut b, &mut br, f16::from_bits(value(i)));
             }
         }
         finish_twosum(a, ar, b, br)
     }
 
     #[inline]
-    pub fn merge_twosum_f16(values: impl Iterator<Item = u32>) -> u32 {
+    pub fn merge_twosum_f16(indices: impl Iterator<Item = usize>, value: impl Fn(usize) -> u32) -> u32 {
         let (mut a, mut ar, mut b, mut br) = (0.0f16, 0.0f16, 0.0f16, 0.0f16);
-        for bits in values {
+        for i in indices {
+            let bits = value(i);
             add(&mut a, &mut ar, f16::from_bits(bits as u16));
             add(&mut b, &mut br, f16::from_bits((bits >> 16) as u16));
         }
@@ -80,9 +84,10 @@ mod kernels {
     }
 
     #[inline]
-    pub fn sum_df16_scalars(values: impl Iterator<Item = u16>) -> u32 {
+    pub fn sum_df16_scalars(indices: impl Iterator<Item = usize>, value: impl Fn(usize) -> u16) -> u32 {
         let mut sum = Df16::ZERO;
-        for bits in values {
+        for i in indices {
+            let bits = value(i);
             sum += Df16::from_parts(f16::from_bits(bits), 0.0f16);
         }
         let (hi, lo) = sum.to_parts();
@@ -91,9 +96,10 @@ mod kernels {
 
     /// Add each packed pair to one Df16 accumulator in input order.
     #[inline]
-    pub fn sum_df16(values: impl Iterator<Item = u32>) -> u32 {
+    pub fn sum_df16(indices: impl Iterator<Item = usize>, value: impl Fn(usize) -> u32) -> u32 {
         let mut sum = Df16::ZERO;
-        for bits in values {
+        for i in indices {
+            let bits = value(i);
             sum += Df16::from_parts(
                 f16::from_bits(bits as u16),
                 f16::from_bits((bits >> 16) as u16),
@@ -110,8 +116,8 @@ mod kernels {
                 let size = values.len() / kernel.items();
                 let remainder = values.len() % kernel.items();
                 let count = size + usize::from(kernel.item_id() < remainder);
-                let values = (0..count).map(|i| values[i * kernel.items() + kernel.item_id()]);
-                *partial = $first_sum(values);
+                // Keep captured pointers out of loop-carried iterator state for rust-gpu.
+                *partial = $first_sum(0..count, |i| values[i * kernel.items() + kernel.item_id()]);
             }
 
             #[kernel]
@@ -120,12 +126,12 @@ mod kernels {
                 let remainder = values.len() % kernel.items();
                 let start = kernel.item_id() * size + kernel.item_id().min(remainder);
                 let end = start + size + usize::from(kernel.item_id() < remainder);
-                *partial = $sum((start..end).map(|i| values[i]));
+                *partial = $sum(start..end, |i| values[i]);
             }
 
             #[kernel]
             pub fn $last(#[global] values: Slice<u32>, #[item] result: &mut u32) {
-                let pair = $sum((0..values.len()).map(|i| values[i]));
+                let pair = $sum(0..values.len(), |i| values[i]);
                 *result = if $round {
                     u32::from(round_pair(pair))
                 } else {
@@ -199,19 +205,19 @@ mod tests {
     fn reference(values: &[u16], df16: bool) -> u32 {
         let sum = |values: Vec<u32>| {
             if df16 {
-                sum_df16(values.into_iter())
+                sum_df16(0..values.len(), |i| values[i])
             } else {
-                merge_twosum_f16(values.into_iter())
+                merge_twosum_f16(0..values.len(), |i| values[i])
             }
         };
         let n = values.len().min(8192);
         let first: Vec<_> = (0..n)
             .map(|i| {
-                let values = values.iter().skip(i).step_by(n).copied();
+                let indices = (i..values.len()).step_by(n);
                 if df16 {
-                    sum_df16_scalars(values)
+                    sum_df16_scalars(indices, |i| values[i])
                 } else {
-                    sum_twosum_f16(values)
+                    sum_twosum_f16(indices, |i| values[i])
                 }
             })
             .collect();
