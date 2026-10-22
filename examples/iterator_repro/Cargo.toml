@@ -5,9 +5,8 @@ edition = "2024"
 publish = false
 
 [workspace]
+members = ["shader"]
+default-members = ["."]
 
 [dependencies]
-krnl = { git = "https://github.com/jlogan03/krnl", rev = "2cc7a4f8c9f8371b81cd8041537690c405c159b2", default-features = false }
-
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(krnlc)', 'cfg(target_arch, values("spirv"))'] }
+spirv-builder = { git = "https://github.com/Rust-GPU/rust-gpu", rev = "57d07949423593dd701a77d9a78acb4ff7ed943e" }

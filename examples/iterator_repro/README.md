@@ -1,24 +1,19 @@
 # Iterator reproduction
 
-This standalone crate reproduces a rust-gpu failure with a mapped iterator whose
-consumer updates two accumulators. It needs no GPU, MoltenVK, or Metal compiler.
-
-Install the compiler revision used to reproduce the failure:
-
-```bash
-rustup toolchain install nightly-2026-08-15 --profile minimal \
-  --component rust-src,rustc-dev,llvm-tools
-cargo +nightly-2026-08-15 install --git https://github.com/jlogan03/krnl \
-  --rev 2cc7a4f8c9f8371b81cd8041537690c405c159b2 --locked krnlc
-```
+This standalone workspace reproduces a rust-gpu failure with a mapped iterator
+whose consumer updates two accumulators. It uses `spirv-std` and `SpirvBuilder`
+directly, with no krnl, GPU, MoltenVK, or Metal compiler.
 
 From this directory, run:
 
 ```bash
-krnlc --manifest-path Cargo.toml
+cargo run --locked
 ```
 
-Compilation fails during SPIR-V validation:
+Rustup selects the pinned nightly toolchain. Cargo builds rust-gpu and its
+SPIRV-Tools dependency, which requires a C++ compiler. The launcher
+then compiles [shader/src/lib.rs](shader/src/lib.rs) and fails during SPIR-V
+validation:
 
 ```text
 error: OpLoad Pointer <id> '…' is not a logical pointer.
@@ -26,9 +21,11 @@ error: OpLoad Pointer <id> '…' is not a logical pointer.
 
 The diagnostic names the emitted `.spv` file. The iterator and closure captures
 leave pointers in composites; the generated loads do not satisfy SPIR-V's
-logical-pointer rules. The failure occurs with rust-gpu revision `18e7d247`.
+logical-pointer rules. The reproduction pins upstream rust-gpu `main` at
+[`57d07949`](https://github.com/Rust-GPU/rust-gpu/commit/57d07949423593dd701a77d9a78acb4ff7ed943e).
 
-As a control, replace the body of `iterator_sum` with an index loop:
+As a control, replace the body of `iterator_sum` in `shader/src/lib.rs` with an
+index loop and rerun the command:
 
 ```rust
 let mut sum = (0.0, 0.0);
