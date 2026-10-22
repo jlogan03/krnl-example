@@ -80,6 +80,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(target_os = "macos", ignore = "Metal does not support f64")]
     fn gpu_f64_tails_and_cancellation() -> Result<()> {
         let device = Device::builder().build()?;
         // Cover both pass boundaries and uneven chunks. f32 would lose these increments.

@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos-device:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      CARGO_BUILD_JOBS: 2
+      RUST_BACKTRACE: 1
+    steps:
+      - uses: actions/checkout@v7
+      # MoltenVK's dependency scripts use distutils, removed in Python 3.12.
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install Rust
+        run: rustup toolchain install nightly-2026-08-15 --profile minimal
+      - name: Test on MoltenVK
+        run: cargo +nightly-2026-08-15 test --locked --features half,moltenvk-static/build-moltenvk --lib --example two_sum --no-fail-fast -- --test-threads=1 --nocapture

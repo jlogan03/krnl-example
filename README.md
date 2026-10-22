@@ -86,6 +86,10 @@ cargo test --lib --example two_sum
 cargo +nightly-2026-08-15 test --features half --lib --example two_sum
 ```
 
+CI runs the tests with `half` enabled on ARM64 macOS using statically linked
+MoltenVK. It skips the GPU `f64` test because Metal does not support `f64`.
+Subnormal checks remain enabled to detect differences in platform behavior.
+
 ## License
 
 Licensed under either of
