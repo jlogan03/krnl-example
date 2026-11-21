@@ -172,6 +172,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(target_os = "macos", ignore = "macOS flushes f32 subnormals")]
     fn gpu_df32_preserves_subnormals() -> Result<()> {
         let device = Device::builder().build()?;
         let input = Buffer::from(vec![f32::from_bits(1); 513]).into_device(device.clone())?;

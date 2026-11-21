@@ -1,6 +1,6 @@
 # krnl-example
 
-Vulkan compute examples using [krnl](https://github.com/jlogan03/krnl/tree/jlogan/update-deps):
+Vulkan compute examples using [krnl](https://github.com/jlogan03/krnl/tree/jlogan/kosmickrisp):
 a basic `y = a*x + b` kernel and CPU/GPU reduction benchmarks.
 
 ## Run
@@ -70,7 +70,7 @@ requires a C++ compiler.
 rustup toolchain install nightly-2026-08-15 --profile minimal \
   --component rust-src,rustc-dev,llvm-tools
 cargo +nightly-2026-08-15 install --git https://github.com/jlogan03/krnl \
-  --branch jlogan/update-deps --locked --features half krnlc
+  --branch jlogan/kosmickrisp --locked --features half krnlc
 bash compile_kernels.sh
 ```
 
@@ -86,9 +86,30 @@ cargo test --lib --example two_sum
 cargo +nightly-2026-08-15 test --features half --lib --example two_sum
 ```
 
-CI runs the tests with `half` enabled on ARM64 macOS using statically linked
-MoltenVK. It skips the GPU `f64` test because Metal does not support `f64`.
-Subnormal checks remain enabled to detect differences in platform behavior.
+### macOS
+
+This branch uses statically linked KosmicKrisp on ARM64 macOS 26 or later.
+It requires a Metal 4 GPU. Install Xcode and the driver build tools listed in
+[krnl's build instructions](https://github.com/jlogan03/krnl/tree/jlogan/kosmickrisp#installing).
+No Vulkan loader or system driver installation is needed.
+
+Run the tests with a source build of the driver:
+
+```sh
+rustup toolchain install nightly-2026-08-15 --profile minimal
+cargo +nightly-2026-08-15 test --locked --features half,kosmickrisp-static/build-kosmickrisp \
+  --lib --example two_sum -- --test-threads=1 --nocapture
+```
+
+The checked-in kernels need no rebuild for this driver change. The GPU `f64`
+test is skipped because Metal does not support `f64`. Use the command above
+to test all supported float types. The default executable requires GPU `f64`.
+On macOS, `f32` GPU arithmetic unconditionally uses flush-to-zero (FTZ) for
+subnormal outputs and denormals-are-zero (DAZ) for subnormal inputs. The `f32` and
+Df32 GPU subnormal tests are suppressed on macOS; `f16` checks remain enabled.
+
+CI builds the macOS tests. GitHub's hosted runners lack Metal 4, so GPU tests
+must run on a Mac with a supported GPU.
 
 ## License
 

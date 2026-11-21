@@ -460,9 +460,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 
 [[package]]
+name = "kosmickrisp-build"
+version = "0.1.0"
+source = "git+https://github.com/jlogan03/kosmickrisp-static?rev=2435236d1e1dafa63a400b3bec68f1e8d5de79d6#2435236d1e1dafa63a400b3bec68f1e8d5de79d6"
+dependencies = [
+ "anyhow",
+ "flate2",
+ "serde_json",
+ "sha2",
+ "tar",
+ "tempfile",
+ "ureq",
+ "walkdir",
+]
+
+[[package]]
+name = "kosmickrisp-static"
+version = "0.1.0"
+source = "git+https://github.com/jlogan03/kosmickrisp-static?rev=2435236d1e1dafa63a400b3bec68f1e8d5de79d6#2435236d1e1dafa63a400b3bec68f1e8d5de79d6"
+dependencies = [
+ "kosmickrisp-build",
+]
+
+[[package]]
 name = "krnl"
 version = "0.1.2-alpha"
-source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fupdate-deps#2cc7a4f8c9f8371b81cd8041537690c405c159b2"
+source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fkosmickrisp#bb249f04fb7be699abca49e0bc66d2e194c4e2da"
 dependencies = [
  "anyhow",
  "ash",
@@ -475,9 +498,9 @@ dependencies = [
  "fxhash",
  "half",
  "itertools",
+ "kosmickrisp-static",
  "krnl-core",
  "krnl-macros",
- "moltenvk-static",
  "num-traits",
  "parking_lot",
  "paste",
@@ -489,7 +512,7 @@ dependencies = [
 [[package]]
 name = "krnl-core"
 version = "0.1.2-alpha"
-source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fupdate-deps#2cc7a4f8c9f8371b81cd8041537690c405c159b2"
+source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fkosmickrisp#bb249f04fb7be699abca49e0bc66d2e194c4e2da"
 dependencies = [
  "bytemuck",
  "derive_more",
@@ -509,9 +532,9 @@ version = "0.1.0"
 dependencies = [
  "deimos_numerics",
  "half",
+ "kosmickrisp-static",
  "krnl",
  "libm",
- "moltenvk-static",
  "num-synth",
  "num_cpus",
  "rand",
@@ -521,7 +544,7 @@ dependencies = [
 [[package]]
 name = "krnl-macros"
 version = "0.1.2-alpha"
-source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fupdate-deps#2cc7a4f8c9f8371b81cd8041537690c405c159b2"
+source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fkosmickrisp#bb249f04fb7be699abca49e0bc66d2e194c4e2da"
 dependencies = [
  "bincode2",
  "bytemuck",
@@ -604,29 +627,6 @@ checksum = "1fa76a2c86f704bdb222d66965fb3d63269ce38518b83cb0575fca855ebb6316"
 dependencies = [
  "adler2",
  "simd-adler32",
-]
-
-[[package]]
-name = "moltenvk-build"
-version = "0.1.0"
-source = "git+https://github.com/jlogan03/moltenvk-static?rev=40ef04ca8647a3584bf3b484e90e906308647ceb#40ef04ca8647a3584bf3b484e90e906308647ceb"
-dependencies = [
- "anyhow",
- "flate2",
- "serde_json",
- "sha2",
- "tar",
- "tempfile",
- "ureq",
- "walkdir",
-]
-
-[[package]]
-name = "moltenvk-static"
-version = "0.1.0"
-source = "git+https://github.com/jlogan03/moltenvk-static?rev=40ef04ca8647a3584bf3b484e90e906308647ceb#40ef04ca8647a3584bf3b484e90e906308647ceb"
-dependencies = [
- "moltenvk-build",
 ]
 
 [[package]]

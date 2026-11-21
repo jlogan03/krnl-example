@@ -206,15 +206,21 @@ mod tests {
             device.wait()?;
             assert_eq!(f64::from(output.into_vec()?[0]), expected, "len={len}");
         }
-        // All three stages must retain subnormals under the strict policy.
-        let input = Buffer::from(vec![f32::from_bits(1); 513]).into_device(device.clone())?;
+        Ok(())
+    }
 
-        let mut output = Buffer::<f32>::zeros(device.clone(), 1)?;
-        let mut run = super::parallel_twosum(device.clone(), 513)?;
-        run(input.as_slice(), output.as_slice_mut())?;
-        device.wait()?;
-        assert_eq!(output.into_vec()?[0].to_bits(), 513);
-
+    #[test]
+    #[cfg_attr(target_os = "macos", ignore = "macOS flushes f32 subnormals")]
+    fn gpu_f32_preserves_subnormals() -> Result<()> {
+        let device = Device::builder().build()?;
+        // Sum the smallest subnormal through all three passes, including an uneven tail.
+        for len in [2, 513] {
+            let input = Buffer::from(vec![f32::from_bits(1); len]).into_device(device.clone())?;
+            let mut output = Buffer::<f32>::zeros(device.clone(), 1)?;
+            super::parallel_twosum(device.clone(), len)?(input.as_slice(), output.as_slice_mut())?;
+            device.wait()?;
+            assert_eq!(output.into_vec()?[0].to_bits(), len as u32, "len={len}");
+        }
         Ok(())
     }
 
@@ -223,6 +229,11 @@ mod tests {
         let device = Device::builder().build()?;
         // krnl rejects empty storage buffers, so check empty input on the CPU.
         assert_eq!(kernels::compensated_sum(core::iter::empty()), 0.0);
+        // CPU arithmetic must preserve the sum of two smallest subnormals, including on macOS.
+        assert_eq!(
+            kernels::compensated_sum([f32::from_bits(1); 2]),
+            f32::from_bits(2)
+        );
         // Cover partial and full banks. Cancellation loses all 19 increments in a plain sum.
         let mut cancellation = vec![16_777_216.0_f32; 8];
         cancellation.extend([1.0; 19]);
@@ -231,7 +242,6 @@ mod tests {
             (vec![3.0], 3.0),
             (vec![1.0, 2.0, 3.0], 6.0),
             (cancellation, 19.0),
-            (vec![f32::from_bits(1); 2], f32::from_bits(2)),
         ] {
             assert_eq!(kernels::compensated_sum(values.iter().copied()), expected);
             let input = Buffer::from(values).into_device(device.clone())?;
