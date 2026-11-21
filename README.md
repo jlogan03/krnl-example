@@ -8,7 +8,8 @@ a basic `y = a*x + b` kernel and CPU/GPU reduction benchmarks.
 Requires Rust 1.95+ and a Vulkan 1.2 device with `shaderFloatControls2`.
 Outside macOS, kernels also require subnormal preservation and round-to-nearest/ties-to-even
 for their float types. On macOS, krnl uses device defaults for unsupported modes.
-Both examples use `f64`.
+The default executable requires GPU `f64`. The reduction benchmark skips its
+`f64` comparison when the device lacks support.
 
 ```bash
 cargo run

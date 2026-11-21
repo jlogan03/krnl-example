@@ -16,7 +16,7 @@ use deimos_numerics::twosum::TwoSum;
 use krnl::{
     anyhow::{Context, Result, ensure},
     buffer::{Buffer, Slice},
-    device::Device,
+    device::{Device, Features},
     scalar::Scalar,
 };
 use krnl_example::kernels::parallel_twosum;
@@ -121,7 +121,9 @@ fn run_case(name: &str, values: &[f32], device: &Device) -> Result<CaseSummary> 
 
     summary.record("TwoSum f32", cpu, (result, compute), upload, download)?;
 
-    f64_bench::benchmark(values, device, &mut summary)?;
+    if device.info().unwrap().features().contains(Features::FLOAT64) {
+        f64_bench::benchmark(values, device, &mut summary)?;
+    }
     df32_bench::benchmark(values, &input, device, upload, &mut summary)?;
     Ok(summary)
 }
