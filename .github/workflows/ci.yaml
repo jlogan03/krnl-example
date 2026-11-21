@@ -17,20 +17,10 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       CARGO_BUILD_JOBS: 2
       RUST_BACKTRACE: 1
-      HOMEBREW_NO_AUTO_UPDATE: "1"
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-      - name: Install driver build tools
-        run: |
-          brew install llvm spirv-llvm-translator pkgconf ninja
-          python -m pip install meson==1.9.1 mako packaging pyyaml
-          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
-          echo "PKG_CONFIG_PATH=$(brew --prefix spirv-llvm-translator)/lib/pkgconfig" >> "$GITHUB_ENV"
       - name: Install Rust
         run: rustup toolchain install nightly-2026-08-15 --profile minimal
       # The hosted runner's virtual GPU does not support Metal 4.
       - name: Build tests with KosmicKrisp
-        run: cargo +nightly-2026-08-15 test --locked --features half,kosmickrisp-static/build-kosmickrisp --lib --example two_sum --no-run
+        run: cargo +nightly-2026-08-15 test --locked --features half --lib --example two_sum --no-run

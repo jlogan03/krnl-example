@@ -462,7 +462,7 @@ checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 [[package]]
 name = "kosmickrisp-build"
 version = "0.1.0"
-source = "git+https://github.com/jlogan03/kosmickrisp-static?rev=2435236d1e1dafa63a400b3bec68f1e8d5de79d6#2435236d1e1dafa63a400b3bec68f1e8d5de79d6"
+source = "git+https://github.com/jlogan03/kosmickrisp-static?rev=d23f27137a8e70b9895f50e64837612f3bed4bbe#d23f27137a8e70b9895f50e64837612f3bed4bbe"
 dependencies = [
  "anyhow",
  "flate2",
@@ -476,8 +476,8 @@ dependencies = [
 
 [[package]]
 name = "kosmickrisp-static"
-version = "0.1.0"
-source = "git+https://github.com/jlogan03/kosmickrisp-static?rev=2435236d1e1dafa63a400b3bec68f1e8d5de79d6#2435236d1e1dafa63a400b3bec68f1e8d5de79d6"
+version = "0.1.0-alpha.1"
+source = "git+https://github.com/jlogan03/kosmickrisp-static?rev=d23f27137a8e70b9895f50e64837612f3bed4bbe#d23f27137a8e70b9895f50e64837612f3bed4bbe"
 dependencies = [
  "kosmickrisp-build",
 ]
@@ -485,7 +485,7 @@ dependencies = [
 [[package]]
 name = "krnl"
 version = "0.1.2-alpha"
-source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fkosmickrisp#bb249f04fb7be699abca49e0bc66d2e194c4e2da"
+source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fkosmickrisp#01ac2bbef20819fd8a3ba82b72e1de3266128cef"
 dependencies = [
  "anyhow",
  "ash",
@@ -512,7 +512,7 @@ dependencies = [
 [[package]]
 name = "krnl-core"
 version = "0.1.2-alpha"
-source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fkosmickrisp#bb249f04fb7be699abca49e0bc66d2e194c4e2da"
+source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fkosmickrisp#01ac2bbef20819fd8a3ba82b72e1de3266128cef"
 dependencies = [
  "bytemuck",
  "derive_more",
@@ -544,7 +544,7 @@ dependencies = [
 [[package]]
 name = "krnl-macros"
 version = "0.1.2-alpha"
-source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fkosmickrisp#bb249f04fb7be699abca49e0bc66d2e194c4e2da"
+source = "git+https://github.com/jlogan03/krnl?branch=jlogan%2Fkosmickrisp#01ac2bbef20819fd8a3ba82b72e1de3266128cef"
 dependencies = [
  "bincode2",
  "bytemuck",

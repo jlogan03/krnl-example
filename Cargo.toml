@@ -21,7 +21,7 @@ rayon = "1.12"
 num_cpus = "1.17"
 
 [target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dev-dependencies]
-kosmickrisp-static = { git = "https://github.com/jlogan03/kosmickrisp-static", rev = "2435236d1e1dafa63a400b3bec68f1e8d5de79d6" }
+kosmickrisp-static = { git = "https://github.com/jlogan03/kosmickrisp-static", rev = "d23f27137a8e70b9895f50e64837612f3bed4bbe" }
 
 [package.metadata.krnlc]
 features = ["half"]

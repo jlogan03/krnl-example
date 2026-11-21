@@ -89,17 +89,20 @@ cargo +nightly-2026-08-15 test --features half --lib --example two_sum
 ### macOS
 
 This branch uses statically linked KosmicKrisp on ARM64 macOS 26 or later.
-It requires a Metal 4 GPU. Install Xcode and the driver build tools listed in
-[krnl's build instructions](https://github.com/jlogan03/krnl/tree/jlogan/kosmickrisp#installing).
-No Vulkan loader or system driver installation is needed.
+It requires a Metal 4 GPU. The build downloads a prebuilt driver and checks its
+SHA-256 checksum. No Mesa build tools, Vulkan loader, or system driver installation
+is needed.
 
-Run the tests with a source build of the driver:
+Run the tests with:
 
 ```sh
 rustup toolchain install nightly-2026-08-15 --profile minimal
-cargo +nightly-2026-08-15 test --locked --features half,kosmickrisp-static/build-kosmickrisp \
+cargo +nightly-2026-08-15 test --locked --features half \
   --lib --example two_sum -- --test-threads=1 --nocapture
 ```
+
+For a source build, add `kosmickrisp-static/build-kosmickrisp` to the feature list
+and follow [krnl's build instructions](https://github.com/jlogan03/krnl/tree/jlogan/kosmickrisp#installing).
 
 The checked-in kernels need no rebuild for this driver change. The GPU `f64`
 test is skipped because Metal does not support `f64`. Use the command above
